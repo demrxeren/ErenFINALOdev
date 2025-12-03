@@ -16,9 +16,15 @@ from functools import wraps
 ESP32_IP = "http://10.241.231.192" 
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=['http://localhost:5173'], 
-     allow_headers=['Content-Type'], expose_headers=['Content-Type'])
+CORS(app, 
+     resources={r"/api/*": {"origins": "http://localhost:5173"}},
+     supports_credentials=True,
+     allow_headers=['Content-Type', 'Authorization'],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 app.config['SECRET_KEY'] = 'super-secret-key-change-in-production'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
 
 # Klasör ve Veritabanı Ayarları
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -49,6 +55,8 @@ class Camera(db.Model):
     name = db.Column(db.String(100), nullable=False)
     ip_address = db.Column(db.String(100), nullable=False)
     location = db.Column(db.String(200))
+    # YENİ EKLENEN: Cihazı tanımak için MAC Adresi
+    mac_address = db.Column(db.String(20), unique=True, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.now)
 
 class SensorData(db.Model):
@@ -76,24 +84,15 @@ with app.app_context():
         db.session.add(admin)
         db.session.commit()
         print("✅ Admin user created: admin/123456")
-    
-    # İlk kamerayı oluştur (eğer yoksa)
-    first_camera = Camera.query.filter_by(id=1).first()
-    if not first_camera:
-        first_camera = Camera(
-            name='Main Camera',
-            ip_address=ESP32_IP,
-            location='Default Location'
-        )
-        db.session.add(first_camera)
-        db.session.commit()
-        print("✅ Default camera created")
 
 # --- Auth Decorator ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        print(f"🔐 Session check - user_id in session: {'user_id' in session}")
+        print(f"🔐 Session contents: {dict(session)}")
         if 'user_id' not in session:
+            print("❌ Unauthorized - no user_id in session")
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
     return decorated_function
@@ -166,17 +165,23 @@ def delete_user(id):
 @app.route('/api/cameras', methods=['GET', 'POST'])
 @login_required
 def manage_cameras():
-    if request.method == 'POST':
-        if not session.get('is_admin'):
-            return jsonify({"error": "Admin access required"}), 403
-        data = request.get_json()
-        camera = Camera(name=data.get('name'), ip_address=data.get('ip_address'), location=data.get('location'))
-        db.session.add(camera)
-        db.session.commit()
-        return jsonify({"message": "Camera added", "id": camera.id}), 201
-    
-    cameras = Camera.query.all()
-    return jsonify([{"id": c.id, "name": c.name, "ip_address": c.ip_address, "location": c.location} for c in cameras])
+    try:
+        if request.method == 'POST':
+            if not session.get('is_admin'):
+                return jsonify({"error": "Admin access required"}), 403
+            data = request.get_json()
+            camera = Camera(name=data.get('name'), ip_address=data.get('ip_address'), location=data.get('location'))
+            db.session.add(camera)
+            db.session.commit()
+            return jsonify({"message": "Camera added", "id": camera.id}), 201
+        
+        cameras = Camera.query.all()
+        return jsonify([{"id": c.id, "name": c.name, "ip_address": c.ip_address, "location": c.location} for c in cameras])
+    except Exception as e:
+        print(f"❌ /api/cameras error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/cameras/<int:id>', methods=['PUT', 'DELETE'])
 @admin_required
@@ -196,13 +201,68 @@ def modify_camera(id):
         db.session.commit()
         return jsonify({"message": "Camera deleted"}), 200
 
+# YENİ: CİHAZ OTOMATİK KAYIT ENDPOINT'I
+@app.route('/api/register-device', methods=['POST'])
+def register_device():
+    try:
+        data = request.get_json()
+        mac = data.get('mac_address')
+        ip = request.remote_addr # İstek yapan IP'yi al
+        
+        if not mac:
+            return jsonify({"error": "MAC address required"}), 400
+
+        # Bu MAC adresine sahip kamera var mı?
+        camera = Camera.query.filter_by(mac_address=mac).first()
+
+        if camera:
+            # Varsa güncelle (IP değişmiş olabilir)
+            # ESP32 IP'sini güncelle (Not: remote_addr bazen docker/proxy arkasında 127.0.0.1 görünebilir,
+            # bu durumda esp kodundan IP'yi manuel göndermek gerekebilir)
+            # Şimdilik varsayılan mantıkla kaydediyoruz.
+            camera.ip_address = f"http://{ip}" 
+            db.session.commit()
+            print(f"♻️ Cihaz güncellendi: {camera.name} (ID: {camera.id}) -> IP: {ip}")
+        else:
+            # Yoksa yeni oluştur
+            count = Camera.query.count()
+            camera = Camera(
+                name=f"Camera {count + 1}", # Otomatik isim: Camera 1, Camera 2...
+                ip_address=f"http://{ip}",
+                location="New Device",
+                mac_address=mac
+            )
+            db.session.add(camera)
+            db.session.commit()
+            print(f"✨ Yeni cihaz kaydedildi: {camera.name} (ID: {camera.id})")
+
+        return jsonify({"id": camera.id, "name": camera.name})
+
+    except Exception as e:
+        print(f"Register Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # 1. ESP32'den Gelen Sensör Verisini Kaydet
 @app.route('/api/sensor-upload', methods=['POST'])
 def upload_sensor():
     try:
         data = request.get_json()
-        print(f"Gelen Veri: {data}") # Debug için
-        camera_id = data.get('camera_id', 1)  # Default ilk kamera
+        print(f"📊 Gelen Veri: {data}") # Debug için
+        
+        # camera_id artık ESP32'den dinamik geliyor
+        camera_id = data.get('camera_id')  
+        if not camera_id:
+             # Eğer ID yoksa (eski kod veya hata), 1. kameraya yazmayı dene veya hata ver
+             # Şimdilik default 1 diyelim, ama ideali cihazın kendini register etmesidir.
+             camera_id = 1 
+             
+        # Kameranın veritabanında var olup olmadığını kontrol et
+        camera = Camera.query.get(camera_id)
+        if not camera:
+            # Eğer böyle bir kamera yoksa (örn: veritabanı silindi ama ESP32 çalışıyor)
+            # Kayıt edilmediği için hata dönebilir veya geçici bir işlem yapılabilir.
+            return jsonify({"error": "Camera not found. Please restart ESP32 to register."}), 404
+
         new_data = SensorData(
             camera_id=camera_id,
             temperature=float(data['temperature']), 
@@ -248,8 +308,12 @@ def get_photos():
     
     try:
         # ESP32'nin /capture adresine git
+        # IP adresi veritabanından dinamik alınıyor
         esp_ip = camera.ip_address
-        print(f"ESP32'ye bağlanılıyor: {esp_ip}/capture")
+        if not esp_ip.startswith("http"):
+             esp_ip = "http://" + esp_ip
+             
+        print(f"📷 ESP32'ye bağlanılıyor: {esp_ip}/capture")
         resp = requests.get(f"{esp_ip}/capture", timeout=10)
         
         if resp.status_code == 200:
