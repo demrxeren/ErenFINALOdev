@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+instance/
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+dist-ssr/
+*.local
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Uploads
+Backend/uploads/*
+!Backend/uploads/.gitkeep
+
+# Environment variables
+.env
+.env.local
+
+# Coverage
+coverage/
+*.coverage
+.coverage.*
+
+# Build files
+*.tsbuildinfo
+.eslintcache
