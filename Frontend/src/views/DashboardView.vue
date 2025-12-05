@@ -29,19 +29,17 @@
                 <span>{{ camera.name }}</span>
                 <div class="card-actions" v-if="user?.is_admin">
                   <el-button 
-                    v-if="camera.id !== 1"
                     type="primary" 
                     size="small" 
                     circle
-                    icon="Edit"
+                    :icon="Edit" 
                     @click.stop="editCamera(camera)"
                   />
                   <el-button 
-                    v-if="camera.id !== 1"
                     type="danger" 
                     size="small" 
                     circle
-                    icon="Delete"
+                    :icon="Delete"
                     @click.stop="deleteCamera(camera.id, camera.name)"
                   />
                 </div>
@@ -56,9 +54,8 @@
         </div>
       </el-main>
 
-      <!-- Camera Management Dialog -->
       <el-dialog v-model="showCameraDialog" :title="editMode ? 'Edit Camera' : 'Add New Camera'" width="500px">
-        <el-form :model="cameraForm" ref="cameraFormRef" :rules="cameraRules">
+         <el-form :model="cameraForm" ref="cameraFormRef" :rules="cameraRules">
           <el-form-item label="Camera Name" prop="name">
             <el-input v-model="cameraForm.name" placeholder="e.g. Front Door" />
           </el-form-item>
@@ -83,9 +80,11 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+// DÜZELTME 3: Edit ve Delete ikonları eklendi
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
+// ... Kodun geri kalanı aynen kalacak ...
 const router = useRouter()
 const user = ref(null)
 const cameras = ref([])

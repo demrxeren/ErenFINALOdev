@@ -22,9 +22,11 @@ CORS(app,
      allow_headers=['Content-Type', 'Authorization'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 app.config['SECRET_KEY'] = 'super-secret-key-change-in-production'
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Changed from 'None' to 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
+app.config['SESSION_TYPE'] = 'filesystem'
 
 # Klasör ve Veritabanı Ayarları
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
