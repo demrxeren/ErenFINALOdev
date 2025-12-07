@@ -5,7 +5,9 @@
     <el-container class="main-layout">
       <el-header class="camera-header">
         <div class="header-left">
-          <el-button icon="ArrowLeft" @click="goBack" circle />
+          <el-button @click="goBack" circle type="primary">
+            <el-icon><ArrowLeft /></el-icon>
+          </el-button>
           <h2>{{ camera?.name }}</h2>
         </div>
       </el-header>
@@ -35,6 +37,7 @@ import AppSidebar from '../components/AppSidebar.vue'
 import MainContent from '../components/MainContent.vue'
 import HistoryDrawer from '../components/HistoryDrawer.vue'
 import { ElMessage } from 'element-plus'
+import { ArrowLeft } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()

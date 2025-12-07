@@ -13,7 +13,7 @@
             v-model="form.username" 
             placeholder="Username" 
             size="large"
-            prefix-icon="User"
+            :prefix-icon="User"
             @keyup.enter="handleLogin"
           />
         </el-form-item>
@@ -23,7 +23,7 @@
             type="password" 
             placeholder="Password" 
             size="large"
-            prefix-icon="Lock"
+            :prefix-icon="Lock"
             show-password
             @keyup.enter="handleLogin"
           />
@@ -47,6 +47,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { User, Lock } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const loginForm = ref(null)

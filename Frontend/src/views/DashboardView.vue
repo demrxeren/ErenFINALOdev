@@ -5,14 +5,6 @@
     <el-container class="main-container">
       <el-header class="dashboard-header">
         <h2>Select Camera</h2>
-        <el-button 
-          v-if="user?.is_admin" 
-          type="primary" 
-          @click="showCameraDialog = true"
-        >
-          <el-icon><Plus /></el-icon>
-          Add New Camera
-        </el-button>
       </el-header>
       
       <el-main>
@@ -53,56 +45,21 @@
           </el-card>
         </div>
       </el-main>
-
-      <el-dialog v-model="showCameraDialog" :title="editMode ? 'Edit Camera' : 'Add New Camera'" width="500px">
-         <el-form :model="cameraForm" ref="cameraFormRef" :rules="cameraRules">
-          <el-form-item label="Camera Name" prop="name">
-            <el-input v-model="cameraForm.name" placeholder="e.g. Front Door" />
-          </el-form-item>
-          <el-form-item label="IP Address" prop="ip_address">
-            <el-input v-model="cameraForm.ip_address" placeholder="http://192.168.1.100" />
-          </el-form-item>
-          <el-form-item label="Location">
-            <el-input v-model="cameraForm.location" placeholder="e.g. Building A, Floor 1" />
-          </el-form-item>
-        </el-form>
-        <template #footer>
-          <el-button @click="cancelEdit">Cancel</el-button>
-          <el-button type="primary" @click="saveCamera">{{ editMode ? 'Update' : 'Add' }}</el-button>
-        </template>
-      </el-dialog>
     </el-container>
   </el-container>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-// DÜZELTME 3: Edit ve Delete ikonları eklendi
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { Edit, Delete } from '@element-plus/icons-vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-// ... Kodun geri kalanı aynen kalacak ...
 const router = useRouter()
 const user = ref(null)
 const cameras = ref([])
-const showCameraDialog = ref(false)
-const cameraFormRef = ref(null)
-const editMode = ref(false)
-const editingCameraId = ref(null)
-
-const cameraForm = reactive({
-  name: '',
-  ip_address: '',
-  location: ''
-})
-
-const cameraRules = {
-  name: [{ required: true, message: 'Camera name is required', trigger: 'blur' }],
-  ip_address: [{ required: true, message: 'IP address is required', trigger: 'blur' }]
-}
 
 const fetchCameras = async () => {
   try {
@@ -116,47 +73,7 @@ const fetchCameras = async () => {
 }
 
 const editCamera = (camera) => {
-  editMode.value = true
-  editingCameraId.value = camera.id
-  cameraForm.name = camera.name
-  cameraForm.ip_address = camera.ip_address
-  cameraForm.location = camera.location || ''
-  showCameraDialog.value = true
-}
-
-const cancelEdit = () => {
-  showCameraDialog.value = false
-  editMode.value = false
-  editingCameraId.value = null
-  cameraForm.name = ''
-  cameraForm.ip_address = ''
-  cameraForm.location = ''
-}
-
-const saveCamera = async () => {
-  if (!cameraFormRef.value) return
-  
-  await cameraFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    
-    try {
-      if (editMode.value) {
-        await axios.put(`http://localhost:5001/api/cameras/${editingCameraId.value}`, cameraForm, {
-          withCredentials: true
-        })
-        ElMessage.success('Camera updated successfully')
-      } else {
-        await axios.post('http://localhost:5001/api/cameras', cameraForm, {
-          withCredentials: true
-        })
-        ElMessage.success('Camera added successfully')
-      }
-      cancelEdit()
-      fetchCameras()
-    } catch (error) {
-      ElMessage.error(editMode.value ? 'Failed to update camera' : 'Failed to add camera')
-    }
-  })
+  ElMessage.info('Edit functionality not available')
 }
 
 const deleteCamera = async (id, name) => {
