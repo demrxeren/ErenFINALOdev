@@ -49,14 +49,12 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 
-const router = useRouter()
-const loginForm = ref(null)
-const loading = ref(false)
-const form = reactive({ username: '', password: '' })
-const rules = {
-  username: [{ required: true, message: 'Please enter username', trigger: 'blur' }],
-  password: [{ required: true, message: 'Please enter password', trigger: 'blur' }]
-}
+const router = useRouter(), loginForm = ref(null), loading = ref(false),
+      form = reactive({ username: '', password: '' }),
+      rules = {
+        username: [{ required: true, message: 'Please enter username', trigger: 'blur' }],
+        password: [{ required: true, message: 'Please enter password', trigger: 'blur' }]
+      }
 
 const handleLogin = async () => {
   await loginForm.value?.validate(async (valid) => {
@@ -65,13 +63,10 @@ const handleLogin = async () => {
     try {
       const { data } = await axios.post('http://localhost:5001/api/login', form, { withCredentials: true })
       localStorage.setItem('user', JSON.stringify(data.user))
-      ElMessage.success('Login successful!')
-      router.push('/dashboard')
-    } catch (error) {
-      ElMessage.error(error.response?.data?.error || 'Login failed')
-    } finally {
-      loading.value = false
-    }
+      ElMessage.success('Login successful!'); router.push('/dashboard')
+    } catch (e) {
+      ElMessage.error(e.response?.data?.error || 'Login failed')
+    } finally { loading.value = false }
   })
 }
 </script>

@@ -58,104 +58,48 @@ const chartCanvas = ref(null), photoUrl = ref(null), rawData = ref([]), filterTy
 let chartInstance, intervalId
 
 const imgSrc = computed(() => props.historyItem?.photo_image || photoUrl.value)
-const filterLabel = computed(() => {
-  const labels = {
-    'temp-max': 'Highest Temp',
-    'temp-min': 'Lowest Temp',
-    'hum-max': 'Highest Humidity',
-    'hum-min': 'Lowest Humidity',
-    'all': 'Show All'
-  }
-  return labels[filterType.value] || 'Show All'
-})
+const filterLabel = computed(() => ({
+  'temp-max': 'Highest Temp', 'temp-min': 'Lowest Temp',
+  'hum-max': 'Highest Humidity', 'hum-min': 'Lowest Humidity', 'all': 'Show All'
+}[filterType.value] || 'Show All'))
 
-const handleFilter = (command) => {
-  filterType.value = command
-  renderChart()
-}
+const handleFilter = (cmd) => { filterType.value = cmd; renderChart() }
 
 const renderChart = () => {
-  if (!chartInstance) return
+  if (!chartInstance || !rawData.value.length) return
+  let data = [...rawData.value], show = []
   
-  // Tüm veriyi kopyala
-  const allData = [...rawData.value]
-  let dataToShow = []
-  
-  // Veri yoksa işlem yapma
-  if (allData.length === 0) return
-
   if (filterType.value !== 'all') {
-    // FİLTRELEME MODU: Tüm hafızadaki veriyi tara
-    let targetIndex = 0
-    
-    if (filterType.value === 'temp-max') {
-      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
-        current.temperature > arr[bestIdx].temperature ? idx : bestIdx, 0)
-    } else if (filterType.value === 'temp-min') {
-      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
-        current.temperature < arr[bestIdx].temperature ? idx : bestIdx, 0)
-    } else if (filterType.value === 'hum-max') {
-      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
-        current.humidity > arr[bestIdx].humidity ? idx : bestIdx, 0)
-    } else if (filterType.value === 'hum-min') {
-      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
-        current.humidity < arr[bestIdx].humidity ? idx : bestIdx, 0)
-    }
-    
-    // Bulunan değerin bağlamını göstermek için öncesinden ve sonrasından 2'şer veri al
-    const start = Math.max(0, targetIndex - 2)
-    const end = Math.min(allData.length, targetIndex + 3)
-    dataToShow = allData.slice(start, end)
-  } else {
-    // NORMAL MOD (Show All): Sadece en son gelen 20 veriyi göster
-    dataToShow = allData.slice(-20)
-  }
+    const comp = { 'temp-max': (a,b) => a.temperature > b.temperature, 'temp-min': (a,b) => a.temperature < b.temperature,
+                   'hum-max': (a,b) => a.humidity > b.humidity, 'hum-min': (a,b) => a.humidity < b.humidity }[filterType.value]
+    const idx = data.reduce((best, cur, i, arr) => comp(cur, arr[best]) ? i : best, 0)
+    show = data.slice(Math.max(0, idx - 2), Math.min(data.length, idx + 3))
+  } else show = data.slice(-20)
   
-  chartInstance.data.labels = dataToShow.map(d => {
-    const date = new Date(d.timestamp)
-    return isNaN(date.getTime()) ? d.timestamp : date.toLocaleTimeString()
-  })
-  chartInstance.data.datasets[0].data = dataToShow.map(d => d.temperature)
-  chartInstance.data.datasets[1].data = dataToShow.map(d => d.humidity)
+  chartInstance.data.labels = show.map(d => new Date(d.timestamp).toLocaleTimeString())
+  chartInstance.data.datasets[0].data = show.map(d => d.temperature)
+  chartInstance.data.datasets[1].data = show.map(d => d.humidity)
   chartInstance.update()
 }
 
-// Veri Çekme Fonksiyonu (Düzeltilmiş - Append Mantığı)
 const fetchData = async () => {
   if (props.historyItem || !chartInstance) return
   try {
-    const { data } = await axios.get('http://localhost:5001/api/data', {
-      params: { camera_id: props.cameraId }, 
-      withCredentials: true
-    })
-    
-    if (rawData.value.length === 0) {
-      // İlk yükleme: gelen veriyi direkt al
-      rawData.value = data
-    } else {
-      // Sonraki yüklemeler: Sadece YENİ olanları ekle
+    const { data } = await axios.get('http://localhost:5001/api/data', 
+      { params: { camera_id: props.cameraId }, withCredentials: true })
+    if (!rawData.value.length) rawData.value = data
+    else {
       const lastId = rawData.value[rawData.value.length - 1].id
-      
-      // Gelen pakette, elimizdeki son ID'den daha büyük ID'ye sahip olanları filtrele
-      const newItems = data.filter(item => item.id > lastId)
-      
-      // Eğer yeni veri varsa listeye ekle
-      if (newItems.length > 0) {
-        rawData.value.push(...newItems)
-      }
+      rawData.value.push(...data.filter(i => i.id > lastId))
     }
-    
     renderChart()
-  } catch (error) {
-    console.error("Veri çekme hatası:", error)
-  }
+  } catch (e) { console.error("Veri çekme hatası:", e) }
 }
 
 const takePhoto = async () => {
   try {
-    const { data } = await axios.get('http://localhost:5001/api/photos', {
-      params: { camera_id: props.cameraId }, withCredentials: true
-    })
+    const { data } = await axios.get('http://localhost:5001/api/photos',
+      { params: { camera_id: props.cameraId }, withCredentials: true })
     photoUrl.value = data[0].url
     ElMessage.success('Photo taken!')
   } catch { ElMessage.error('Failed to take photo') }
@@ -165,10 +109,8 @@ const saveData = async () => {
   if (!chartInstance) return
   try {
     await axios.post('http://localhost:5001/api/save-history', {
-      camera_id: props.cameraId, 
-      chartImage: chartInstance.toBase64Image(),
-      photoUrl: photoUrl.value, 
-      sensorData: { labels: chartInstance.data.labels, datasets: chartInstance.data.datasets }
+      camera_id: props.cameraId, chartImage: chartInstance.toBase64Image(),
+      photoUrl: photoUrl.value, sensorData: { labels: chartInstance.data.labels, datasets: chartInstance.data.datasets }
     }, { withCredentials: true })
     ElMessage.success('Saved!')
   } catch { ElMessage.error('Failed to save') }
@@ -176,11 +118,11 @@ const saveData = async () => {
 
 const clearAll = async () => {
   try {
-    await ElMessageBox.confirm('Clear all data?', 'Warning', { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
-    await axios.delete('http://localhost:5001/api/data', { params: { camera_id: props.cameraId }, withCredentials: true })
-    photoUrl.value = null
-    rawData.value = []
-    renderChart()
+    await ElMessageBox.confirm('Clear all data?', 'Warning', 
+      { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
+    await axios.delete('http://localhost:5001/api/data', 
+      { params: { camera_id: props.cameraId }, withCredentials: true })
+    photoUrl.value = null; rawData.value = []; renderChart()
     ElMessage.success('Cleared')
   } catch {}
 }
@@ -189,17 +131,12 @@ watch(() => props.historyItem, (item) => {
   clearInterval(intervalId)
   if (item?.sensor_data) {
     const { labels = [], datasets = [] } = item.sensor_data
-    rawData.value = labels.map((lbl, i) => ({
-      timestamp: lbl, temperature: datasets[0]?.data[i], humidity: datasets[1]?.data[i]
-    }))
-    filterType.value = 'all'
-    renderChart()
+    rawData.value = labels.map((lbl, i) => ({ timestamp: lbl, 
+      temperature: datasets[0]?.data[i], humidity: datasets[1]?.data[i] }))
+    filterType.value = 'all'; renderChart()
   } else {
-    rawData.value = []
-    filterType.value = 'all'
-    renderChart()
-    fetchData()
-    intervalId = setInterval(fetchData, 3000)
+    rawData.value = []; filterType.value = 'all'; renderChart()
+    fetchData(); intervalId = setInterval(fetchData, 3000)
   }
 })
 
@@ -210,17 +147,12 @@ onMounted(() => {
     data: { labels: [], datasets: [
       { label: 'Temp', data: [], borderColor: 'orange', tension: 0.1 },
       { label: 'Humidity', data: [], borderColor: 'lightblue', tension: 0.1 }
-    ]},
-    options: { responsive: true, maintainAspectRatio: false }
+    ]}, options: { responsive: true, maintainAspectRatio: false }
   })
-  fetchData()
-  intervalId = setInterval(fetchData, 3000)
+  fetchData(); intervalId = setInterval(fetchData, 3000)
 })
 
-onUnmounted(() => {
-  clearInterval(intervalId)
-  chartInstance?.destroy()
-})
+onUnmounted(() => { clearInterval(intervalId); chartInstance?.destroy() })
 </script>
 
 <style scoped>

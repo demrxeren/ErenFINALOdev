@@ -26,26 +26,22 @@ import axios from 'axios'
 import { Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-const props = defineProps({ 
-  visible: Boolean,
-  cameraId: Number
-})
+const props = defineProps({ visible: Boolean, cameraId: Number })
 defineEmits(['update:visible', 'select-item'])
 const historyItems = ref([])
 
 const fetchHistory = async () => {
   try { 
-    const response = await axios.get('http://localhost:5001/api/history', {
-      params: props.cameraId ? { camera_id: props.cameraId } : {},
-      withCredentials: true
-    })
-    historyItems.value = response.data
+    const { data } = await axios.get('http://localhost:5001/api/history', {
+      params: props.cameraId ? { camera_id: props.cameraId } : {}, withCredentials: true })
+    historyItems.value = data
   } catch { }
 }
 
 const deleteHistory = async (id) => {
   try {
-    await ElMessageBox.confirm('Delete?', 'Warning', { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
+    await ElMessageBox.confirm('Delete?', 'Warning', 
+      { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
     await axios.delete(`http://localhost:5001/api/history/${id}`, { withCredentials: true })
     ElMessage.success('Deleted'); fetchHistory()
   } catch { }

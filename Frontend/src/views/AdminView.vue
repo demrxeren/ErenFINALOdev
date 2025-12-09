@@ -73,16 +73,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-const users = ref([])
-const userFormRef = ref(null)
-const userForm = reactive({ username: '', password: '', is_admin: false })
-const userRules = {
-  username: [{ required: true, message: 'Username is required', trigger: 'blur' }],
-  password: [
-    { required: true, message: 'Password is required', trigger: 'blur' },
-    { min: 6, message: 'Password must be at least 6 characters', trigger: 'blur' }
-  ]
-}
+const users = ref([]), userFormRef = ref(null),
+      userForm = reactive({ username: '', password: '', is_admin: false }),
+      userRules = {
+        username: [{ required: true, message: 'Username is required', trigger: 'blur' }],
+        password: [
+          { required: true, message: 'Password is required', trigger: 'blur' },
+          { min: 6, message: 'Password must be at least 6 characters', trigger: 'blur' }
+        ]
+      }
 
 const fetchUsers = async () => {
   try {
@@ -99,23 +98,17 @@ const addUser = async () => {
       ElMessage.success('User added successfully')
       Object.assign(userForm, { username: '', password: '', is_admin: false })
       fetchUsers()
-    } catch (error) {
-      ElMessage.error(error.response?.data?.error || 'Failed to add user')
-    }
+    } catch (e) { ElMessage.error(e.response?.data?.error || 'Failed to add user') }
   })
 }
 
 const deleteUser = async (id) => {
   try {
     await ElMessageBox.confirm('Are you sure you want to delete this user?', 'Warning', {
-      confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning'
-    })
+      confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning' })
     await axios.delete(`http://localhost:5001/api/users/${id}`, { withCredentials: true })
-    ElMessage.success('User deleted successfully')
-    fetchUsers()
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error('Failed to delete user')
-  }
+    ElMessage.success('User deleted successfully'); fetchUsers()
+  } catch (e) { if (e !== 'cancel') ElMessage.error('Failed to delete user') }
 }
 
 onMounted(fetchUsers)

@@ -55,12 +55,9 @@ import { ElMessage } from 'element-plus'
 
 defineProps({ activeIndex: { type: String, default: '1' } })
 
-const router = useRouter()
-const user = ref(null)
-const showProfileDialog = ref(false)
-const loading = ref(false)
-const formRef = ref(null)
-const form = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
+const router = useRouter(), user = ref(null), showProfileDialog = ref(false), 
+      loading = ref(false), formRef = ref(null),
+      form = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 
 const rules = {
   currentPassword: [{ required: true, message: 'Mevcut şifre gerekli', trigger: 'blur' }],
@@ -80,26 +77,22 @@ const changePassword = async () => {
     loading.value = true
     try {
       await axios.post('http://localhost:5001/api/change-password', {
-        current_password: form.currentPassword,
-        new_password: form.newPassword
+        current_password: form.currentPassword, new_password: form.newPassword
       }, { withCredentials: true })
       ElMessage.success('Şifre başarıyla değiştirildi')
       showProfileDialog.value = false
       Object.assign(form, { currentPassword: '', newPassword: '', confirmPassword: '' })
       formRef.value.resetFields()
-    } catch (error) {
-      ElMessage.error(error.response?.data?.error || 'Şifre değiştirme başarısız')
-    } finally {
-      loading.value = false
-    }
+    } catch (e) {
+      ElMessage.error(e.response?.data?.error || 'Şifre değiştirme başarısız')
+    } finally { loading.value = false }
   })
 }
 
 const handleLogout = async () => {
   try {
     await axios.post('http://localhost:5001/api/logout', {}, { withCredentials: true })
-    localStorage.removeItem('user')
-    router.push('/login')
+    localStorage.removeItem('user'); router.push('/login')
   } catch { ElMessage.error('Logout failed') }
 }
 

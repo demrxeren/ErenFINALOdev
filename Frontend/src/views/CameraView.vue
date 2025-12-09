@@ -39,12 +39,9 @@ import HistoryDrawer from '../components/HistoryDrawer.vue'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 
-const route = useRoute()
-const router = useRouter()
-const cameraId = ref(parseInt(route.params.id))
-const camera = ref(null)
-const showHistoryDrawer = ref(false)
-const selectedHistoryItem = ref(null)
+const route = useRoute(), router = useRouter(),
+      cameraId = ref(parseInt(route.params.id)), camera = ref(null),
+      showHistoryDrawer = ref(false), selectedHistoryItem = ref(null)
 
 const fetchCamera = async () => {
   try {

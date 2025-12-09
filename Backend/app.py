@@ -5,22 +5,17 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 
-ESP32_IP = "http://10.241.231.192"
-
 app = Flask(__name__)
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}}, supports_credentials=True,
      allow_headers=['Content-Type', 'Authorization'], methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
-app.config.update(
-    SECRET_KEY='super-secret-key-change-in-production',
-    SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=False,
-    SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_DOMAIN=None, SESSION_TYPE='filesystem',
-    SQLALCHEMY_DATABASE_URI=f'sqlite:///{os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "data.db")}',
-    UPLOAD_FOLDER=os.path.join(os.path.abspath(os.path.dirname(__file__)), 'uploads'),
-    SQLALCHEMY_TRACK_MODIFICATIONS=False
-)
+app.config.update(SECRET_KEY='super-secret-key-change-in-production', SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=False, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_DOMAIN=None,
+    SQLALCHEMY_DATABASE_URI=f'sqlite:///{os.path.join(BASE_DIR, "instance", "data.db")}',
+    UPLOAD_FOLDER=os.path.join(BASE_DIR, 'uploads'), SQLALCHEMY_TRACK_MODIFICATIONS=False)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance'), exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, 'instance'), exist_ok=True)
 
 db = SQLAlchemy(app)
 
@@ -67,8 +62,7 @@ with app.app_context():
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session: return jsonify({"error": "Unauthorized"}), 401
-        return f(*args, **kwargs)
+        return f(*args, **kwargs) if 'user_id' in session else (jsonify({"error": "Unauthorized"}), 401)
     return decorated
 
 def admin_required(f):
@@ -76,8 +70,7 @@ def admin_required(f):
     def decorated(*args, **kwargs):
         if 'user_id' not in session: return jsonify({"error": "Unauthorized"}), 401
         user = User.query.get(session['user_id'])
-        if not user or not user.is_admin: return jsonify({"error": "Admin access required"}), 403
-        return f(*args, **kwargs)
+        return f(*args, **kwargs) if user and user.is_admin else (jsonify({"error": "Admin access required"}), 403)
     return decorated
 
 @app.route('/api/login', methods=['POST'])
@@ -118,11 +111,11 @@ def get_current_user():
 def manage_users():
     if request.method == 'POST':
         data = request.get_json()
-        if User.query.filter_by(username=data.get('username')).first(): return jsonify({"error": "Username already exists"}), 400
+        if User.query.filter_by(username=data.get('username')).first(): 
+            return jsonify({"error": "Username already exists"}), 400
         user = User(username=data.get('username'), is_admin=data.get('is_admin', False))
         user.set_password(data.get('password'))
-        db.session.add(user)
-        db.session.commit()
+        db.session.add(user); db.session.commit()
         return jsonify({"message": "User created", "id": user.id}), 201
     return jsonify([{"id": u.id, "username": u.username, "is_admin": u.is_admin} for u in User.query.all()])
 
@@ -131,8 +124,7 @@ def manage_users():
 def delete_user(id):
     user = User.query.get_or_404(id)
     if user.username == 'admin': return jsonify({"error": "Cannot delete admin user"}), 400
-    db.session.delete(user)
-    db.session.commit()
+    db.session.delete(user); db.session.commit()
     return jsonify({"message": "User deleted"}), 200
 
 @app.route('/api/cameras', methods=['GET', 'POST'])
@@ -156,11 +148,12 @@ def modify_camera(id):
     camera = Camera.query.get_or_404(id)
     if request.method == 'PUT':
         data = request.get_json()
-        camera.name, camera.ip_address, camera.location = data.get('name', camera.name), data.get('ip_address', camera.ip_address), data.get('location', camera.location)
+        camera.name = data.get('name', camera.name)
+        camera.ip_address = data.get('ip_address', camera.ip_address)
+        camera.location = data.get('location', camera.location)
         db.session.commit()
         return jsonify({"message": "Camera updated"}), 200
-    db.session.delete(camera)
-    db.session.commit()
+    db.session.delete(camera); db.session.commit()
     return jsonify({"message": "Camera deleted"}), 200
 
 @app.route('/api/register-device', methods=['POST'])
@@ -186,8 +179,10 @@ def upload_sensor():
     try:
         data = request.get_json()
         camera_id = data.get('camera_id', 1)
-        if not Camera.query.get(camera_id): return jsonify({"error": "Camera not found. Please restart ESP32 to register."}), 404
-        db.session.add(SensorData(camera_id=camera_id, temperature=float(data['temperature']), humidity=float(data['humidity'])))
+        if not Camera.query.get(camera_id): 
+            return jsonify({"error": "Camera not found. Please restart ESP32 to register."}), 404
+        db.session.add(SensorData(camera_id=camera_id, temperature=float(data['temperature']), 
+                                   humidity=float(data['humidity'])))
         db.session.commit()
         return jsonify({"message": "Data received"}), 201
     except Exception as e:

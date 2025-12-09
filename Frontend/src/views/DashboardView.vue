@@ -57,9 +57,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Delete } from '@element-plus/icons-vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
-const router = useRouter()
-const user = ref(null)
-const cameras = ref([])
+const router = useRouter(), user = ref(null), cameras = ref([])
 
 const fetchCameras = async () => {
   try {
@@ -74,17 +72,13 @@ const deleteCamera = async (id, name) => {
   try {
     await ElMessageBox.confirm(
       id === 1 ? `Are you sure you want to delete "${name}"? This is the main camera.` : `Delete camera "${name}"?`,
-      'Warning', { confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning' }
-    )
+      'Warning', { confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning' })
     await axios.delete(`http://localhost:5001/api/cameras/${id}`, { withCredentials: true })
-    ElMessage.success('Camera deleted')
-    fetchCameras()
-  } catch (error) {
-    if (error !== 'cancel') ElMessage.error('Failed to delete camera')
-  }
+    ElMessage.success('Camera deleted'); fetchCameras()
+  } catch (e) { if (e !== 'cancel') ElMessage.error('Failed to delete camera') }
 }
 
-const selectCamera = (camera) => router.push({ name: 'camera', params: { id: camera.id } })
+const selectCamera = (cam) => router.push({ name: 'camera', params: { id: cam.id } })
 
 onMounted(async () => {
   const userData = localStorage.getItem('user')
