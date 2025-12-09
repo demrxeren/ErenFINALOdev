@@ -76,11 +76,16 @@ const handleFilter = (command) => {
 
 const renderChart = () => {
   if (!chartInstance) return
-  const allData = [...rawData.value]
-  let dataToShow = allData
   
-  if (allData.length && filterType.value !== 'all') {
-    // TÜM datadan (chart'ta görünmeyen eskiler dahil) hedef indexi bul
+  // Tüm veriyi kopyala
+  const allData = [...rawData.value]
+  let dataToShow = []
+  
+  // Veri yoksa işlem yapma
+  if (allData.length === 0) return
+
+  if (filterType.value !== 'all') {
+    // FİLTRELEME MODU: Tüm hafızadaki veriyi tara
     let targetIndex = 0
     
     if (filterType.value === 'temp-max') {
@@ -97,12 +102,12 @@ const renderChart = () => {
         current.humidity < arr[bestIdx].humidity ? idx : bestIdx, 0)
     }
     
-    // Hedef index etrafında 2 önce, kendisi, 2 sonra (toplam 5 veri)
+    // Bulunan değerin bağlamını göstermek için öncesinden ve sonrasından 2'şer veri al
     const start = Math.max(0, targetIndex - 2)
     const end = Math.min(allData.length, targetIndex + 3)
     dataToShow = allData.slice(start, end)
   } else {
-    // Show All: son 20 veriyi göster
+    // NORMAL MOD (Show All): Sadece en son gelen 20 veriyi göster
     dataToShow = allData.slice(-20)
   }
   
@@ -115,15 +120,35 @@ const renderChart = () => {
   chartInstance.update()
 }
 
+// Veri Çekme Fonksiyonu (Düzeltilmiş - Append Mantığı)
 const fetchData = async () => {
   if (props.historyItem || !chartInstance) return
   try {
     const { data } = await axios.get('http://localhost:5001/api/data', {
-      params: { camera_id: props.cameraId }, withCredentials: true
+      params: { camera_id: props.cameraId }, 
+      withCredentials: true
     })
-    rawData.value = data
+    
+    if (rawData.value.length === 0) {
+      // İlk yükleme: gelen veriyi direkt al
+      rawData.value = data
+    } else {
+      // Sonraki yüklemeler: Sadece YENİ olanları ekle
+      const lastId = rawData.value[rawData.value.length - 1].id
+      
+      // Gelen pakette, elimizdeki son ID'den daha büyük ID'ye sahip olanları filtrele
+      const newItems = data.filter(item => item.id > lastId)
+      
+      // Eğer yeni veri varsa listeye ekle
+      if (newItems.length > 0) {
+        rawData.value.push(...newItems)
+      }
+    }
+    
     renderChart()
-  } catch {}
+  } catch (error) {
+    console.error("Veri çekme hatası:", error)
+  }
 }
 
 const takePhoto = async () => {
@@ -140,8 +165,10 @@ const saveData = async () => {
   if (!chartInstance) return
   try {
     await axios.post('http://localhost:5001/api/save-history', {
-      camera_id: props.cameraId, chartImage: chartInstance.toBase64Image(),
-      photoUrl: photoUrl.value, sensorData: { labels: chartInstance.data.labels, datasets: chartInstance.data.datasets }
+      camera_id: props.cameraId, 
+      chartImage: chartInstance.toBase64Image(),
+      photoUrl: photoUrl.value, 
+      sensorData: { labels: chartInstance.data.labels, datasets: chartInstance.data.datasets }
     }, { withCredentials: true })
     ElMessage.success('Saved!')
   } catch { ElMessage.error('Failed to save') }
