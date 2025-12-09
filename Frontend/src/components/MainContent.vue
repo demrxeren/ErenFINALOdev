@@ -197,7 +197,7 @@ const saveData = async () => {
   try {
     await axios.post('http://localhost:5001/api/save-history', {
       camera_id: props.cameraId, chartImage: chartInstance.toBase64Image(),
-      photoUrl: photoUrl.value, sensorData: { labels: chartInstance.data.labels, datasets: chartInstance.data.datasets }
+      photoUrl: photoUrl.value, sensorData: rawData.value
     }, { withCredentials: true })
     ElMessage.success('Saved!')
   } catch { ElMessage.error('Failed to save') }
@@ -220,9 +220,7 @@ watch(() => props.historyItem, (item) => {
 
   if (item?.sensor_data) {
     // Geçmiş Modu
-    const { labels = [], datasets = [] } = item.sensor_data
-    rawData.value = labels.map((lbl, i) => ({ timestamp: lbl, 
-      temperature: datasets[0]?.data[i], humidity: datasets[1]?.data[i] }))
+    rawData.value = Array.isArray(item.sensor_data) ? item.sensor_data : []
     filterType.value = 'all'; renderChart()
   } else {
     // Canlı Mod
@@ -235,7 +233,6 @@ watch(() => props.historyItem, (item) => {
 })
 
 onMounted(() => {
-  if (props.historyItem) return
   chartInstance = new Chart(chartCanvas.value.getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [
@@ -243,6 +240,8 @@ onMounted(() => {
       { label: 'Humidity', data: [], borderColor: 'lightblue', tension: 0.1 }
     ]}, options: { responsive: true, maintainAspectRatio: false }
   })
+  
+  if (props.historyItem) return
   
   fetchData(); 
   intervalId = setInterval(fetchData, 3000)
