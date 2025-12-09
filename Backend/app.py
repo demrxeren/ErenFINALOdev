@@ -196,7 +196,7 @@ def handle_data():
         SensorData.query.filter_by(camera_id=camera_id).delete()
         db.session.commit()
         return jsonify({"message": "Cleared"}), 200
-    data = SensorData.query.filter_by(camera_id=camera_id).order_by(SensorData.timestamp.desc()).limit(20).all()
+    data = SensorData.query.filter_by(camera_id=camera_id).order_by(SensorData.timestamp.desc()).all()
     return jsonify([{'id': r.id, 'temperature': r.temperature, 'humidity': r.humidity, 'timestamp': r.timestamp.strftime('%Y-%m-%d %H:%M:%S')} for r in data[::-1]])
 
 @app.route('/api/photos', methods=['GET'])
