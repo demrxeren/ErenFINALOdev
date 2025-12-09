@@ -63,53 +63,32 @@ const cameras = ref([])
 
 const fetchCameras = async () => {
   try {
-    const response = await axios.get('http://localhost:5001/api/cameras', {
-      withCredentials: true
-    })
-    cameras.value = response.data
-  } catch (error) {
-    ElMessage.error('Failed to load cameras')
-  }
+    const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
+    cameras.value = data
+  } catch { ElMessage.error('Failed to load cameras') }
 }
 
-const editCamera = (camera) => {
-  ElMessage.info('Edit functionality not available')
-}
+const editCamera = () => ElMessage.info('Edit functionality not available')
 
 const deleteCamera = async (id, name) => {
   try {
-    const message = id === 1 
-      ? `Are you sure you want to delete "${name}"? This is the main camera and deleting it may affect system functionality.`
-      : `Delete camera "${name}"?`
-    
-    await ElMessageBox.confirm(message, 'Warning', {
-      confirmButtonText: 'Yes, Delete',
-      cancelButtonText: 'Cancel',
-      type: 'warning',
-      dangerouslyUseHTMLString: false
-    })
-    await axios.delete(`http://localhost:5001/api/cameras/${id}`, {
-      withCredentials: true
-    })
+    await ElMessageBox.confirm(
+      id === 1 ? `Are you sure you want to delete "${name}"? This is the main camera.` : `Delete camera "${name}"?`,
+      'Warning', { confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning' }
+    )
+    await axios.delete(`http://localhost:5001/api/cameras/${id}`, { withCredentials: true })
     ElMessage.success('Camera deleted')
     fetchCameras()
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('Failed to delete camera')
-    }
+    if (error !== 'cancel') ElMessage.error('Failed to delete camera')
   }
 }
 
-const selectCamera = (camera) => {
-  router.push({ name: 'camera', params: { id: camera.id } })
-}
+const selectCamera = (camera) => router.push({ name: 'camera', params: { id: camera.id } })
 
 onMounted(async () => {
   const userData = localStorage.getItem('user')
-  if (userData) {
-    user.value = JSON.parse(userData)
-  }
-  
+  if (userData) user.value = JSON.parse(userData)
   await fetchCameras()
 })
 </script>

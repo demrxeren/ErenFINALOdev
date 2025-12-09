@@ -2,66 +2,110 @@
   <el-aside width="200px" class="sidebar">
     <div class="sidebar-header">
       <h3>ESP32-CAM</h3>
-      <div class="user-info">
+      <div class="user-info" @click="showProfileDialog = true" style="cursor: pointer;">
+        <el-icon style="font-size: 20px; margin-bottom: 8px;"><User /></el-icon>
         <span>{{ user?.username }}</span>
       </div>
     </div>
     
     <el-menu :default-active="activeIndex" class="sidebar-menu">
-      <el-menu-item index="1" @click="navigateTo('/dashboard')">
+      <el-menu-item index="1" @click="router.push('/dashboard')">
         <el-icon><HomeFilled /></el-icon>
         <span>Dashboard</span>
       </el-menu-item>
-      
-      <el-menu-item v-if="user?.is_admin" index="2" @click="navigateTo('/admin')">
+      <el-menu-item v-if="user?.is_admin" index="2" @click="router.push('/admin')">
         <el-icon><Setting /></el-icon>
         <span>Admin</span>
       </el-menu-item>
-      
       <el-menu-item index="3" @click="handleLogout" class="logout-item">
         <el-icon><SwitchButton /></el-icon>
         <span>Logout</span>
       </el-menu-item>
     </el-menu>
+
+    <el-dialog v-model="showProfileDialog" title="Profil Ayarları" width="400px">
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="140px">
+        <el-form-item label="Kullanıcı Adı">
+          <el-input v-model="user.username" disabled />
+        </el-form-item>
+        <el-form-item label="Mevcut Şifre" prop="currentPassword">
+          <el-input v-model="form.currentPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="Yeni Şifre" prop="newPassword">
+          <el-input v-model="form.newPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="Yeni Şifre Tekrar" prop="confirmPassword">
+          <el-input v-model="form.confirmPassword" type="password" show-password />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showProfileDialog = false">İptal</el-button>
+        <el-button type="primary" @click="changePassword" :loading="loading">Şifreyi Değiştir</el-button>
+      </template>
+    </el-dialog>
   </el-aside>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { HomeFilled, Setting, SwitchButton } from '@element-plus/icons-vue'
+import { ref, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { HomeFilled, Setting, SwitchButton, User } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+defineProps({ activeIndex: { type: String, default: '1' } })
+
 const router = useRouter()
-const route = useRoute()
 const user = ref(null)
+const showProfileDialog = ref(false)
+const loading = ref(false)
+const formRef = ref(null)
+const form = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 
-const props = defineProps({ 
-  activeIndex: { type: String, default: '1' } 
-})
+const rules = {
+  currentPassword: [{ required: true, message: 'Mevcut şifre gerekli', trigger: 'blur' }],
+  newPassword: [
+    { required: true, message: 'Yeni şifre gerekli', trigger: 'blur' },
+    { min: 6, message: 'Şifre en az 6 karakter olmalı', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, trigger: 'blur' },
+    { validator: (r, v, cb) => v === form.newPassword ? cb() : cb(new Error('Şifreler eşleşmiyor')), trigger: 'blur' }
+  ]
+}
 
-const navigateTo = (path) => {
-  router.push(path)
+const changePassword = async () => {
+  await formRef.value?.validate(async (valid) => {
+    if (!valid) return
+    loading.value = true
+    try {
+      await axios.post('http://localhost:5001/api/change-password', {
+        current_password: form.currentPassword,
+        new_password: form.newPassword
+      }, { withCredentials: true })
+      ElMessage.success('Şifre başarıyla değiştirildi')
+      showProfileDialog.value = false
+      Object.assign(form, { currentPassword: '', newPassword: '', confirmPassword: '' })
+      formRef.value.resetFields()
+    } catch (error) {
+      ElMessage.error(error.response?.data?.error || 'Şifre değiştirme başarısız')
+    } finally {
+      loading.value = false
+    }
+  })
 }
 
 const handleLogout = async () => {
   try {
-    await axios.post('http://localhost:5001/api/logout', {}, {
-      withCredentials: true
-    })
+    await axios.post('http://localhost:5001/api/logout', {}, { withCredentials: true })
     localStorage.removeItem('user')
     router.push('/login')
-  } catch (error) {
-    ElMessage.error('Logout failed')
-  }
+  } catch { ElMessage.error('Logout failed') }
 }
 
 onMounted(() => {
   const userData = localStorage.getItem('user')
-  if (userData) {
-    user.value = JSON.parse(userData)
-  }
+  if (userData) user.value = JSON.parse(userData)
 })
 </script>
 
@@ -82,6 +126,19 @@ onMounted(() => {
   margin: 0 0 12px 0;
   color: #fff;
   font-size: 18px;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.user-info:hover {
+  background: #ffffff1a;
 }
 
 .user-info span {
@@ -122,5 +179,11 @@ onMounted(() => {
 :deep(.logout-item:hover) {
   background: #ff4d4f !important;
   color: #fff !important;
+}
+
+.el-icon svg {
+    height: 1em;
+    width: 1em;
+    color: white;
 }
 </style>

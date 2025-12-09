@@ -46,14 +46,14 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="Actions" width="120">
+            <el-table-column label="Actions" width="120" align="center">
               <template #default="{ row }">
                 <el-button 
                   v-if="row.username !== 'admin'" 
                   type="danger" 
                   size="small" 
                   circle
-                  icon="Delete"
+                  :icon="Delete"
                   @click="deleteUser(row.id)"
                 />
                 <el-tag v-else type="info" size="small">Protected</el-tag>
@@ -70,18 +70,12 @@
 import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Delete } from '@element-plus/icons-vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
 const users = ref([])
 const userFormRef = ref(null)
-
-const userForm = reactive({
-  username: '',
-  password: '',
-  is_admin: false
-})
-
+const userForm = reactive({ username: '', password: '', is_admin: false })
 const userRules = {
   username: [{ required: true, message: 'Username is required', trigger: 'blur' }],
   password: [
@@ -92,29 +86,18 @@ const userRules = {
 
 const fetchUsers = async () => {
   try {
-    const response = await axios.get('http://localhost:5001/api/users', {
-      withCredentials: true
-    })
-    users.value = response.data
-  } catch (error) {
-    ElMessage.error('Failed to load users')
-  }
+    const { data } = await axios.get('http://localhost:5001/api/users', { withCredentials: true })
+    users.value = data
+  } catch { ElMessage.error('Failed to load users') }
 }
 
 const addUser = async () => {
-  if (!userFormRef.value) return
-  
-  await userFormRef.value.validate(async (valid) => {
+  await userFormRef.value?.validate(async (valid) => {
     if (!valid) return
-    
     try {
-      await axios.post('http://localhost:5001/api/users', userForm, {
-        withCredentials: true
-      })
+      await axios.post('http://localhost:5001/api/users', userForm, { withCredentials: true })
       ElMessage.success('User added successfully')
-      userForm.username = ''
-      userForm.password = ''
-      userForm.is_admin = false
+      Object.assign(userForm, { username: '', password: '', is_admin: false })
       fetchUsers()
     } catch (error) {
       ElMessage.error(error.response?.data?.error || 'Failed to add user')
@@ -125,25 +108,17 @@ const addUser = async () => {
 const deleteUser = async (id) => {
   try {
     await ElMessageBox.confirm('Are you sure you want to delete this user?', 'Warning', {
-      confirmButtonText: 'Yes, Delete',
-      cancelButtonText: 'Cancel',
-      type: 'warning'
+      confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning'
     })
-    await axios.delete(`http://localhost:5001/api/users/${id}`, {
-      withCredentials: true
-    })
+    await axios.delete(`http://localhost:5001/api/users/${id}`, { withCredentials: true })
     ElMessage.success('User deleted successfully')
     fetchUsers()
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('Failed to delete user')
-    }
+    if (error !== 'cancel') ElMessage.error('Failed to delete user')
   }
 }
 
-onMounted(() => {
-  fetchUsers()
-})
+onMounted(fetchUsers)
 </script>
 
 <style scoped>

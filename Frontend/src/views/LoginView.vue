@@ -52,30 +52,19 @@ import { User, Lock } from '@element-plus/icons-vue'
 const router = useRouter()
 const loginForm = ref(null)
 const loading = ref(false)
-
-const form = reactive({
-  username: '',
-  password: ''
-})
-
+const form = reactive({ username: '', password: '' })
 const rules = {
   username: [{ required: true, message: 'Please enter username', trigger: 'blur' }],
   password: [{ required: true, message: 'Please enter password', trigger: 'blur' }]
 }
 
 const handleLogin = async () => {
-  if (!loginForm.value) return
-  
-  await loginForm.value.validate(async (valid) => {
+  await loginForm.value?.validate(async (valid) => {
     if (!valid) return
-    
     loading.value = true
     try {
-      const response = await axios.post('http://localhost:5001/api/login', form, {
-        withCredentials: true
-      })
-      
-      localStorage.setItem('user', JSON.stringify(response.data.user))
+      const { data } = await axios.post('http://localhost:5001/api/login', form, { withCredentials: true })
+      localStorage.setItem('user', JSON.stringify(data.user))
       ElMessage.success('Login successful!')
       router.push('/dashboard')
     } catch (error) {

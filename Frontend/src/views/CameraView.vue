@@ -48,22 +48,14 @@ const selectedHistoryItem = ref(null)
 
 const fetchCamera = async () => {
   try {
-    const response = await axios.get('http://localhost:5001/api/cameras', {
-      withCredentials: true
-    })
-    camera.value = response.data.find(c => c.id === cameraId.value)
-  } catch (error) {
-    ElMessage.error('Failed to load camera')
-  }
+    const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
+    camera.value = data.find(c => c.id === cameraId.value)
+  } catch { ElMessage.error('Failed to load camera') }
 }
 
-const goBack = () => {
-  router.push('/dashboard')
-}
+const goBack = () => router.push('/dashboard')
 
-onMounted(() => {
-  fetchCamera()
-})
+onMounted(fetchCamera)
 </script>
 
 <style scoped>
