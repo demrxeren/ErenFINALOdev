@@ -92,8 +92,8 @@ const currentTemp = computed(() => {
 // Durum Paneli Metinleri
 const captureStatus = computed(() => {
   const t = currentTemp.value
-  if (t >= 24) return { title: 'ALARM', type: 'error', desc: 'Live Video Stream Active' }
-  if (t >= 22) return { title: 'High Alert', type: 'warning', desc: 'Capture: Every 5s' }
+  if (t >= 28) return { title: 'ALARM', type: 'error', desc: 'Live Video Stream Active' }
+  if (t >= 24) return { title: 'High Alert', type: 'warning', desc: 'Capture: Every 5s' }
   if (t >= 20) return { title: 'Attention', type: 'info', desc: 'Capture: Every 10s' }
   return { title: 'Normal', type: 'success', desc: 'Capture: Every 30s' }
 })
@@ -105,7 +105,7 @@ const manageAutoCapture = async () => {
   const temp = currentTemp.value
 
   // --- VIDEO MODU (>= 24°C) ---
-  if (temp >= 24) {
+  if (temp >= 28) {
     if (!photoUrl.value || !photoUrl.value.includes('/stream')) {
        try {
          const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
@@ -134,7 +134,7 @@ const manageAutoCapture = async () => {
 
   let nextInterval = 30000 
   
-  if (temp >= 22) {
+  if (temp >= 24) {
     nextInterval = 5000 
   } else if (temp >= 20) {
     nextInterval = 10000 
