@@ -50,7 +50,13 @@ const fetchCamera = async () => {
   } catch { ElMessage.error('Failed to load camera') }
 }
 
-const goBack = () => router.push('/dashboard')
+const goBack = () => {
+  if (selectedHistoryItem.value) {
+    selectedHistoryItem.value = null
+  } else {
+    router.push('/dashboard')
+  }
+}
 
 onMounted(fetchCamera)
 </script>
