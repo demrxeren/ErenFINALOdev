@@ -1,26 +1,45 @@
 <template>
   <el-main class="main-layout">
     <div class="content-wrapper">
+      
       <el-card class="box-card chart-card" header="Chart Area">
         <canvas ref="chartCanvas"></canvas>
       </el-card>
       
-      <div class="controls-section" v-if="!historyItem">
-        <el-button type="primary" size="large" @click="takePhoto" block>Take Photo</el-button>
-        <el-button type="success" size="large" @click="saveData" block>Save</el-button>
-        <el-button type="danger" size="large" @click="clearAll" block>Clear</el-button>
-        <el-button type="info" size="large" @click="$emit('open-history')" block>History</el-button>
-      </div>
-      <div v-else class="controls-section">
-        <div class="history-info">
-          <p>{{ historyItem.timestamp }}</p>
-        </div>
+      <div class="controls-section">
+        <el-dropdown trigger="click" @command="handleFilter" style="width: 100%;">
+          <el-button type="warning" size="large" block>
+            {{ filterLabel }} <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="all">Show All</el-dropdown-item>
+              <el-dropdown-item command="temp-max">Highest Temp</el-dropdown-item>
+              <el-dropdown-item command="temp-min">Lowest Temp</el-dropdown-item>
+              <el-dropdown-item command="hum-max">Highest Humidity</el-dropdown-item>
+              <el-dropdown-item command="hum-min">Lowest Humidity</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
+        <template v-if="!historyItem">
+          <el-button type="primary" size="large" @click="takePhoto" block>Take Photo</el-button>
+          <el-button type="success" size="large" @click="saveData" block>Save</el-button>
+          <el-button type="danger" size="large" @click="clearAll" block>Clear</el-button>
+          <el-button type="info" size="large" @click="$emit('open-history')" block>History</el-button>
+        </template>
+        <template v-else>
+          <div class="history-info">
+            <p>{{ historyItem.timestamp }}</p>
+          </div>
+        </template>
       </div>
       
       <el-card class="box-card picture-card" header="Picture Area">
         <img v-if="imgSrc" :src="imgSrc" />
         <span v-else>{{ historyItem ? 'No Photo Saved' : 'Camera Feed' }}</span>
       </el-card>
+
     </div>
   </el-main>
 </template>
@@ -30,34 +49,82 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import Chart from 'chart.js/auto'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 
 const props = defineProps({ historyItem: Object, cameraId: { type: Number, default: 1 } })
 defineEmits(['open-history'])
 
-const chartCanvas = ref(null), photoUrl = ref(null)
+const chartCanvas = ref(null), photoUrl = ref(null), rawData = ref([]), filterType = ref('all')
 let chartInstance, intervalId
 
 const imgSrc = computed(() => props.historyItem?.photo_image || photoUrl.value)
-
-const updateChart = (data) => {
-  if (!chartInstance) return
-  if (data) chartInstance.data = data
-  else {
-    chartInstance.data.labels = []
-    chartInstance.data.datasets.forEach(ds => ds.data = [])
+const filterLabel = computed(() => {
+  const labels = {
+    'temp-max': 'Highest Temp',
+    'temp-min': 'Lowest Temp',
+    'hum-max': 'Highest Humidity',
+    'hum-min': 'Lowest Humidity',
+    'all': 'Show All'
   }
+  return labels[filterType.value] || 'Show All'
+})
+
+const handleFilter = (command) => {
+  filterType.value = command
+  renderChart()
+}
+
+const renderChart = () => {
+  if (!chartInstance) return
+  const allData = [...rawData.value]
+  let dataToShow = allData
+  
+  if (allData.length && filterType.value !== 'all') {
+    // TÜM datadan (chart'ta görünmeyen eskiler dahil) hedef indexi bul
+    let targetIndex = 0
+    
+    if (filterType.value === 'temp-max') {
+      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
+        current.temperature > arr[bestIdx].temperature ? idx : bestIdx, 0)
+    } else if (filterType.value === 'temp-min') {
+      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
+        current.temperature < arr[bestIdx].temperature ? idx : bestIdx, 0)
+    } else if (filterType.value === 'hum-max') {
+      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
+        current.humidity > arr[bestIdx].humidity ? idx : bestIdx, 0)
+    } else if (filterType.value === 'hum-min') {
+      targetIndex = allData.reduce((bestIdx, current, idx, arr) => 
+        current.humidity < arr[bestIdx].humidity ? idx : bestIdx, 0)
+    }
+    
+    // Hedef index etrafında 2 önce, kendisi, 2 sonra (toplam 5 veri)
+    const start = Math.max(0, targetIndex - 2)
+    const end = Math.min(allData.length, targetIndex + 3)
+    dataToShow = allData.slice(start, end)
+  } else {
+    // Show All: son 20 veriyi göster
+    dataToShow = allData.slice(-20)
+  }
+  
+  chartInstance.data.labels = dataToShow.map(d => {
+    const date = new Date(d.timestamp)
+    return isNaN(date.getTime()) ? d.timestamp : date.toLocaleTimeString()
+  })
+  chartInstance.data.datasets[0].data = dataToShow.map(d => d.temperature)
+  chartInstance.data.datasets[1].data = dataToShow.map(d => d.humidity)
   chartInstance.update()
 }
 
-watch(() => props.historyItem, (item) => {
-  clearInterval(intervalId)
-  if (item?.sensor_data) updateChart(item.sensor_data)
-  else {
-    updateChart()
-    fetchData()
-    intervalId = setInterval(fetchData, 3000)
-  }
-})
+const fetchData = async () => {
+  if (props.historyItem || !chartInstance) return
+  try {
+    const { data } = await axios.get('http://localhost:5001/api/data', {
+      params: { camera_id: props.cameraId }, withCredentials: true
+    })
+    rawData.value = data
+    renderChart()
+  } catch {}
+}
 
 const takePhoto = async () => {
   try {
@@ -80,28 +147,34 @@ const saveData = async () => {
   } catch { ElMessage.error('Failed to save') }
 }
 
-const fetchData = async () => {
-  if (props.historyItem || !chartInstance) return
-  try {
-    const { data } = await axios.get('http://localhost:5001/api/data', {
-      params: { camera_id: props.cameraId }, withCredentials: true
-    })
-    chartInstance.data.labels = data.map(d => new Date(d.timestamp).toLocaleTimeString())
-    chartInstance.data.datasets[0].data = data.map(d => d.temperature)
-    chartInstance.data.datasets[1].data = data.map(d => d.humidity)
-    chartInstance.update()
-  } catch {}
-}
-
 const clearAll = async () => {
   try {
     await ElMessageBox.confirm('Clear all data?', 'Warning', { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
     await axios.delete('http://localhost:5001/api/data', { params: { camera_id: props.cameraId }, withCredentials: true })
     photoUrl.value = null
-    updateChart()
+    rawData.value = []
+    renderChart()
     ElMessage.success('Cleared')
   } catch {}
 }
+
+watch(() => props.historyItem, (item) => {
+  clearInterval(intervalId)
+  if (item?.sensor_data) {
+    const { labels = [], datasets = [] } = item.sensor_data
+    rawData.value = labels.map((lbl, i) => ({
+      timestamp: lbl, temperature: datasets[0]?.data[i], humidity: datasets[1]?.data[i]
+    }))
+    filterType.value = 'all'
+    renderChart()
+  } else {
+    rawData.value = []
+    filterType.value = 'all'
+    renderChart()
+    fetchData()
+    intervalId = setInterval(fetchData, 3000)
+  }
+})
 
 onMounted(() => {
   if (props.historyItem) return
@@ -202,5 +275,12 @@ span {
   text-align: center; 
   font-weight: bold; 
   padding: 10px; 
+}
+.controls-section .el-dropdown {
+  width: 100%;
+}
+
+.controls-section :deep(.el-dropdown .el-button) {
+  width: 100%;
 }
 </style>

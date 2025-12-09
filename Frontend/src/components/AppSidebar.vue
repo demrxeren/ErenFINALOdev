@@ -15,7 +15,7 @@
       </el-menu-item>
       <el-menu-item v-if="user?.is_admin" index="2" @click="router.push('/admin')">
         <el-icon><Setting /></el-icon>
-        <span>Admin</span>
+        <span>User Management</span>
       </el-menu-item>
       <el-menu-item index="3" @click="handleLogout" class="logout-item">
         <el-icon><SwitchButton /></el-icon>
@@ -24,7 +24,7 @@
     </el-menu>
 
     <el-dialog v-model="showProfileDialog" title="Profil Ayarları" width="400px">
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="140px">
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="140px" label-position="left">
         <el-form-item label="Kullanıcı Adı">
           <el-input v-model="user.username" disabled />
         </el-form-item>
@@ -185,5 +185,16 @@ onMounted(() => {
     height: 1em;
     width: 1em;
     color: white;
+}
+
+:deep(.el-form-item__label)::before {
+  content: '' !important;
+  margin-right: 0 !important;
+}
+
+:deep(.el-form-item.is-required .el-form-item__label)::after {
+  content: '*';
+  color: var(--el-color-danger);
+  margin-left: 4px;
 }
 </style>
