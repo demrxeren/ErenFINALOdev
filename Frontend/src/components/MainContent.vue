@@ -47,7 +47,7 @@
       </div>
       
       <el-card class="box-card picture-card" header="Picture Area">
-        <!-- Geçmiş Modunda 3x3 Grid -->
+        <!-- Geçmiş Modunda Photo Grid (All Photos) -->
         <div v-if="historyItem && historyPhotos.length > 0" class="history-grid">
           <div v-for="(photo, index) in historyPhotos" :key="index" class="grid-item" @click="openPhotoDialog(photo)">
             <img :src="photo.url" :alt="`Photo ${index + 1}`" />
@@ -67,8 +67,8 @@
       </el-card>
       
       <!-- Fotoğraf Dialog -->
-      <el-dialog v-model="photoDialogVisible" width="80%" :close-on-click-modal="true">
-        <img v-if="selectedPhoto" :src="selectedPhoto.url" style="width: 100%; height: auto;" />
+      <el-dialog v-model="photoDialogVisible" width="50%" :close-on-click-modal="true">
+        <img v-if="selectedPhoto" :src="selectedPhoto.url" style="max-width: 100%; max-height: 70vh; width: auto; height: auto; display: block; margin: 0 auto;" />
         <template #header>
           <span>{{ selectedPhoto ? new Date(selectedPhoto.timestamp).toLocaleString() : '' }}</span>
         </template>
@@ -214,7 +214,7 @@ watch(() => props.historyItem, (item) => {
     rawData.value = Array.isArray(item.sensor_data) ? item.sensor_data : []
     filterType.value = 'all'; renderChart()
   } else {
-    rawData.value = []; capturedPhotos.value = []; filterType.value = 'all'; renderChart()
+    rawData.value = []; filterType.value = 'all'; renderChart()
     fetchData(); intervalId = setInterval(fetchData, 3000); manageAutoCapture()
   }
 })
@@ -309,11 +309,12 @@ onUnmounted(() => { clearInterval(intervalId); clearTimeout(captureTimeoutId); c
   height: 100%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
+  grid-auto-rows: minmax(150px, 1fr);
   gap: 8px;
   padding: 8px;
   overflow-y: auto;
   background-color: #f5f7fa;
+  align-content: start;
 }
 
 .grid-item {

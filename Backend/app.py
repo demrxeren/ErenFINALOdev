@@ -271,7 +271,7 @@ def get_history():
     items = query.order_by(HistoryItem.timestamp.desc()).limit(10).all()
     result = []
     for i in items:
-        photos = HistoryPhoto.query.filter_by(history_id=i.id).order_by(HistoryPhoto.timestamp.asc()).all()
+        photos = HistoryPhoto.query.filter_by(history_id=i.id).order_by(HistoryPhoto.timestamp.desc()).all()
         result.append({
             'id': i.id, 
             'camera_id': i.camera_id, 
