@@ -47,7 +47,16 @@
       </div>
       
       <el-card class="box-card picture-card" header="Picture Area">
-        <div class="image-wrapper">
+        <!-- Geçmiş Modunda 3x3 Grid -->
+        <div v-if="historyItem && historyPhotos.length > 0" class="history-grid">
+          <div v-for="(photo, index) in historyPhotos" :key="index" class="grid-item" @click="openPhotoDialog(photo)">
+            <img :src="photo.url" :alt="`Photo ${index + 1}`" />
+            <div class="photo-timestamp">{{ new Date(photo.timestamp).toLocaleTimeString() }}</div>
+          </div>
+        </div>
+        
+        <!-- Normal Mod veya Tek Fotoğraf -->
+        <div v-else class="image-wrapper">
           <img v-if="imgSrc" :src="imgSrc" />
           
           <div v-else class="no-photo-state">
@@ -56,6 +65,14 @@
           </div>
         </div>
       </el-card>
+      
+      <!-- Fotoğraf Dialog -->
+      <el-dialog v-model="photoDialogVisible" width="80%" :close-on-click-modal="true">
+        <img v-if="selectedPhoto" :src="selectedPhoto.url" style="width: 100%; height: auto;" />
+        <template #header>
+          <span>{{ selectedPhoto ? new Date(selectedPhoto.timestamp).toLocaleString() : '' }}</span>
+        </template>
+      </el-dialog>
 
     </div>
   </el-main>
@@ -71,97 +88,73 @@ import { ArrowDown, Camera } from '@element-plus/icons-vue'
 const props = defineProps({ historyItem: Object, cameraId: { type: Number, default: 1 } })
 defineEmits(['open-history'])
 
-const chartCanvas = ref(null), photoUrl = ref(null), rawData = ref([]), filterType = ref('all')
-let chartInstance, intervalId, captureTimeoutId
+const chartCanvas = ref(null), photoUrl = ref(null), rawData = ref([]), filterType = ref('all'),
+      capturedPhotos = ref([]), photoDialogVisible = ref(false), selectedPhoto = ref(null)
+let chartInstance, intervalId, captureTimeoutId, photoErrorShown = false
 
-// Görüntü Kaynağı (Stream veya Fotoğraf)
+const openPhotoDialog = (photo) => { selectedPhoto.value = photo; photoDialogVisible.value = true }
 const imgSrc = computed(() => props.historyItem?.photo_image || photoUrl.value)
-
-const filterLabel = computed(() => ({
-  'temp-max': 'Highest Temp', 'temp-min': 'Lowest Temp',
-  'hum-max': 'Highest Humidity', 'hum-min': 'Lowest Humidity', 
-  'show-20': 'Show 20', 'all': 'Show All'
-}[filterType.value] || 'Show All'))
-
-// Son sıcaklık verisi
-const currentTemp = computed(() => {
-  if (!rawData.value || rawData.value.length === 0) return 0
-  return rawData.value[rawData.value.length - 1].temperature
-})
-
-// Durum Paneli Metinleri
+const historyPhotos = computed(() => props.historyItem?.photos?.length ? props.historyItem.photos : [])
+const filterLabel = computed(() => ({ 'temp-max': 'Highest Temp', 'temp-min': 'Lowest Temp', 'hum-max': 'Highest Humidity', 'hum-min': 'Lowest Humidity', 'show-20': 'Show 20', 'all': 'Show All' }[filterType.value] || 'Show All'))
+const currentTemp = computed(() => rawData.value.length ? rawData.value[rawData.value.length - 1].temperature : 0)
 const captureStatus = computed(() => {
   const t = currentTemp.value
-  if (t >= 28) return { title: 'ALARM', type: 'error', desc: 'Live Video Stream Active' }
-  if (t >= 24) return { title: 'High Alert', type: 'warning', desc: 'Capture: Every 5s' }
-  if (t >= 20) return { title: 'Attention', type: 'info', desc: 'Capture: Every 10s' }
-  return { title: 'Normal', type: 'success', desc: 'Capture: Every 30s' }
+  return t >= 28 ? { title: 'ALARM', type: 'error', desc: 'Live Video Stream Active' } :
+         t >= 24 ? { title: 'High Alert', type: 'warning', desc: 'Capture: Every 10s' } :
+         t >= 20 ? { title: 'Attention', type: 'info', desc: 'Capture: Every 20s' } :
+         { title: 'Normal', type: 'success', desc: 'Capture: Every 30s' }
 })
 
-// === OTOMATİK ÇEKİM VE VIDEO YÖNETİMİ ===
 const manageAutoCapture = async () => {
-  if (props.historyItem) return // Geçmiş modundaysak dur
-
+  if (props.historyItem) return
   const temp = currentTemp.value
 
-  // --- VIDEO MODU (>= 24°C) ---
   if (temp >= 28) {
-    if (!photoUrl.value || !photoUrl.value.includes('/stream')) {
-       try {
-         const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
-         const cam = data.find(c => c.id === props.cameraId)
-         if (cam) {
-             let baseUrl = cam.ip_address
-             if (!baseUrl.startsWith('http')) baseUrl = `http://${baseUrl}`
-             photoUrl.value = `${baseUrl}/stream` 
-         }
-       } catch (e) { 
-         console.error("Kamera IP'si alınamadı:", e) 
-       }
+    if (!photoUrl.value?.includes('/stream')) {
+      try {
+        const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
+        const cam = data.find(c => c.id === props.cameraId)
+        if (cam) {
+          let baseUrl = cam.ip_address.startsWith('http') ? cam.ip_address : `http://${cam.ip_address}`
+          photoUrl.value = `${baseUrl}/stream`
+        }
+      } catch (e) { console.error("Kamera IP'si alınamadı:", e) }
     }
-    
     clearTimeout(captureTimeoutId)
-    captureTimeoutId = setTimeout(manageAutoCapture, 3000) 
+    captureTimeoutId = setTimeout(manageAutoCapture, 3000)
     return
-  } 
-
-  // --- FOTOĞRAF MODU (< 24°C) ---
-  if (photoUrl.value && photoUrl.value.includes('/stream')) {
-      photoUrl.value = null 
   }
 
-  await takePhoto()
-
-  let nextInterval = 30000 
-  
-  if (temp >= 24) {
-    nextInterval = 5000 
-  } else if (temp >= 20) {
-    nextInterval = 10000 
-  }
-
+  if (photoUrl.value?.includes('/stream')) photoUrl.value = null
+  await getLatestPhoto()
   clearTimeout(captureTimeoutId)
-  captureTimeoutId = setTimeout(manageAutoCapture, nextInterval)
+  captureTimeoutId = setTimeout(manageAutoCapture, 5000)
 }
 
 const handleFilter = (cmd) => { filterType.value = cmd; renderChart() }
 
-// === GÜNCELLENEN KISIM BURASI ===
 const renderChart = () => {
-  if (!chartInstance || !rawData.value.length) return
-  let data = [...rawData.value], show = []
-  
+  if (!chartInstance) return
+  if (!rawData.value.length) {
+    chartInstance.data.labels = []
+    chartInstance.data.datasets[0].data = []
+    chartInstance.data.datasets[1].data = []
+    chartInstance.update()
+    return
+  }
+
+  let show = []
+  const data = [...rawData.value]
+
   if (filterType.value === 'show-20') {
-    show = data.slice(-20) // Sadece son 20 veriyi göster
+    show = data.slice(-20)
   } else if (filterType.value !== 'all') {
     const comp = { 'temp-max': (a,b) => a.temperature > b.temperature, 'temp-min': (a,b) => a.temperature < b.temperature,
                    'hum-max': (a,b) => a.humidity > b.humidity, 'hum-min': (a,b) => a.humidity < b.humidity }[filterType.value]
     const idx = data.reduce((best, cur, i, arr) => comp(cur, arr[best]) ? i : best, 0)
     show = data.slice(Math.max(0, idx - 2), Math.min(data.length, idx + 3))
-  } else {
-    show = data // ARTIK TÜM VERİYİ GÖSTERİYOR (Dilimleme kaldırıldı)
-  }
-  
+  } else show = data
+
   chartInstance.data.labels = show.map(d => new Date(d.timestamp).toLocaleTimeString())
   chartInstance.data.datasets[0].data = show.map(d => d.temperature)
   chartInstance.data.datasets[1].data = show.map(d => d.humidity)
@@ -171,25 +164,28 @@ const renderChart = () => {
 const fetchData = async () => {
   if (props.historyItem || !chartInstance) return
   try {
-    const { data } = await axios.get('http://localhost:5001/api/data', 
-      { params: { camera_id: props.cameraId }, withCredentials: true })
+    const { data } = await axios.get('http://localhost:5001/api/data', { params: { camera_id: props.cameraId }, withCredentials: true })
+    if (!data || !Array.isArray(data)) return
+
     if (!rawData.value.length) rawData.value = data
     else {
       const lastId = rawData.value[rawData.value.length - 1].id
-      rawData.value.push(...data.filter(i => i.id > lastId))
+      const newData = data.filter(i => i.id > lastId)
+      if (newData.length) rawData.value.push(...newData)
     }
     renderChart()
   } catch (e) { console.error("Veri çekme hatası:", e) }
 }
 
-const takePhoto = async () => {
+const getLatestPhoto = async () => {
   try {
-    const { data } = await axios.get('http://localhost:5001/api/photos',
-      { params: { camera_id: props.cameraId }, withCredentials: true })
-    if(data[0]?.url) photoUrl.value = data[0].url
-  } catch { 
-    console.error('Auto capture failed') 
-  }
+    const { data } = await axios.get('http://localhost:5001/api/photos', { params: { camera_id: props.cameraId }, withCredentials: true })
+    if (data[0]?.url && photoUrl.value !== data[0].url) {
+      photoUrl.value = data[0].url
+      capturedPhotos.value.push({ url: data[0].url, timestamp: new Date().toISOString() })
+    }
+    photoErrorShown = false
+  } catch (e) { if (!photoErrorShown) { console.warn('⚠ Camera device not available'); photoErrorShown = true } }
 }
 
 const saveData = async () => {
@@ -197,7 +193,7 @@ const saveData = async () => {
   try {
     await axios.post('http://localhost:5001/api/save-history', {
       camera_id: props.cameraId, chartImage: chartInstance.toBase64Image(),
-      photoUrl: photoUrl.value, sensorData: rawData.value
+      photoUrl: photoUrl.value, sensorData: rawData.value, photos: capturedPhotos.value
     }, { withCredentials: true })
     ElMessage.success('Saved!')
   } catch { ElMessage.error('Failed to save') }
@@ -205,54 +201,36 @@ const saveData = async () => {
 
 const clearAll = async () => {
   try {
-    await ElMessageBox.confirm('Clear all data?', 'Warning', 
-      { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
-    await axios.delete('http://localhost:5001/api/data', 
-      { params: { camera_id: props.cameraId }, withCredentials: true })
-    photoUrl.value = null; rawData.value = []; renderChart()
+    await ElMessageBox.confirm('Clear all data?', 'Warning', { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
+    await axios.delete('http://localhost:5001/api/data', { params: { camera_id: props.cameraId }, withCredentials: true })
+    photoUrl.value = null; rawData.value = []; capturedPhotos.value = []; renderChart()
     ElMessage.success('Cleared')
   } catch {}
 }
 
 watch(() => props.historyItem, (item) => {
-  clearInterval(intervalId)
-  clearTimeout(captureTimeoutId)
-
+  clearInterval(intervalId); clearTimeout(captureTimeoutId)
   if (item?.sensor_data) {
-    // Geçmiş Modu
     rawData.value = Array.isArray(item.sensor_data) ? item.sensor_data : []
     filterType.value = 'all'; renderChart()
   } else {
-    // Canlı Mod
-    rawData.value = []; filterType.value = 'all'; renderChart()
-    
-    fetchData(); 
-    intervalId = setInterval(fetchData, 3000)
-    manageAutoCapture() 
+    rawData.value = []; capturedPhotos.value = []; filterType.value = 'all'; renderChart()
+    fetchData(); intervalId = setInterval(fetchData, 3000); manageAutoCapture()
   }
 })
 
 onMounted(() => {
   chartInstance = new Chart(chartCanvas.value.getContext('2d'), {
-    type: 'line',
-    data: { labels: [], datasets: [
+    type: 'line', data: { labels: [], datasets: [
       { label: 'Temp', data: [], borderColor: 'orange', tension: 0.1 },
       { label: 'Humidity', data: [], borderColor: 'lightblue', tension: 0.1 }
     ]}, options: { responsive: true, maintainAspectRatio: false }
   })
-  
   if (props.historyItem) return
-  
-  fetchData(); 
-  intervalId = setInterval(fetchData, 3000)
-  manageAutoCapture()
+  fetchData(); intervalId = setInterval(fetchData, 3000); manageAutoCapture()
 })
 
-onUnmounted(() => { 
-  clearInterval(intervalId); 
-  clearTimeout(captureTimeoutId);
-  chartInstance?.destroy() 
-})
+onUnmounted(() => { clearInterval(intervalId); clearTimeout(captureTimeoutId); chartInstance?.destroy() })
 </script>
 
 <style scoped>
@@ -324,6 +302,54 @@ onUnmounted(() => {
   max-width: 100%; 
   max-height: 100%;
   object-fit: contain;
+}
+
+.history-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  background-color: #f5f7fa;
+}
+
+.grid-item {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 4px;
+  border: 1px solid #dcdfe6;
+  background-color: white;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.grid-item:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 1;
+}
+
+.grid-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-timestamp {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px;
+  font-size: 10px;
+  text-align: center;
 }
 
 .no-photo-state {

@@ -1,4 +1,4 @@
-import os, datetime, base64, json, requests
+import os, datetime, base64, json, requests, threading, time
 from flask import Flask, request, jsonify, send_from_directory, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -18,6 +18,9 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, 'instance'), exist_ok=True)
 
 db = SQLAlchemy(app)
+
+# Fotoğraf cache (her kamera için son fotoğraf ve zaman)
+photo_cache = {}
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -48,6 +51,12 @@ class HistoryItem(db.Model):
     chart_image = db.Column(db.String)
     photo_image = db.Column(db.String)
     sensor_data = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.now)
+
+class HistoryPhoto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    history_id = db.Column(db.Integer, db.ForeignKey('history_item.id'), nullable=False)
+    photo_url = db.Column(db.String, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.now)
 
 with app.app_context():
@@ -205,15 +214,27 @@ def get_photos():
     camera_id = request.args.get('camera_id', 1, type=int)
     camera = Camera.query.get(camera_id)
     if not camera: return jsonify([{'url': 'https://placehold.co/320x240?text=Camera+Not+Found'}]), 404
+    
+    # Cache kontrolü: Son 5 saniye içinde çekilmiş fotoğraf varsa onu döndür
+    now = datetime.datetime.now()
+    if camera_id in photo_cache:
+        cached_photo, cached_time = photo_cache[camera_id]
+        if (now - cached_time).total_seconds() < 5:
+            return jsonify([{'url': cached_photo}])
+    
     try:
         esp_ip = camera.ip_address if camera.ip_address.startswith("http") else f"http://{camera.ip_address}"
         resp = requests.get(f"{esp_ip}/capture", timeout=10)
         if resp.status_code == 200:
             filename = f"cam{camera_id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
             with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), 'wb') as f: f.write(resp.content)
-            return jsonify([{'url': f'http://localhost:5001/uploads/{filename}'}])
+            photo_url = f'http://localhost:5001/uploads/{filename}'
+            # Cache'e kaydet
+            photo_cache[camera_id] = (photo_url, now)
+            return jsonify([{'url': photo_url}])
         return jsonify([{'url': 'https://placehold.co/320x240?text=ESP32+Error'}]), 502
-    except:
+    except Exception as e:
+        print(f"Photo capture error: {e}")
         return jsonify([{'url': 'https://placehold.co/320x240?text=Connection+Refused'}]), 500
 
 @app.route('/api/save-history', methods=['POST'])
@@ -228,9 +249,18 @@ def save_history():
             with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as f: f.write(base64.b64decode(img_data))
         item = HistoryItem(camera_id=camera_id, chart_image=filename, photo_image=data.get('photoUrl'), sensor_data=json.dumps(data.get('sensorData')))
         db.session.add(item)
+        db.session.flush()  # ID'yi almak için
+        
+        # Birden fazla fotoğraf kaydet
+        photos = data.get('photos', [])
+        for photo_data in photos:
+            photo = HistoryPhoto(history_id=item.id, photo_url=photo_data['url'], timestamp=datetime.datetime.fromisoformat(photo_data['timestamp']))
+            db.session.add(photo)
+        
         db.session.commit()
         return jsonify({"message": "Saved", "id": item.id}), 201
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/history', methods=['GET'])
@@ -239,14 +269,26 @@ def get_history():
     camera_id = request.args.get('camera_id', type=int)
     query = HistoryItem.query.filter_by(camera_id=camera_id) if camera_id else HistoryItem.query
     items = query.order_by(HistoryItem.timestamp.desc()).limit(10).all()
-    return jsonify([{'id': i.id, 'camera_id': i.camera_id, 'chart_image': f'/uploads/{i.chart_image}', 
-                     'photo_image': i.photo_image, 'sensor_data': json.loads(i.sensor_data) if i.sensor_data else None, 
-                     'timestamp': i.timestamp.strftime('%Y-%m-%d %H:%M:%S')} for i in items])
+    result = []
+    for i in items:
+        photos = HistoryPhoto.query.filter_by(history_id=i.id).order_by(HistoryPhoto.timestamp.asc()).all()
+        result.append({
+            'id': i.id, 
+            'camera_id': i.camera_id, 
+            'chart_image': f'/uploads/{i.chart_image}', 
+            'photo_image': i.photo_image, 
+            'photos': [{'url': p.photo_url, 'timestamp': p.timestamp.strftime('%Y-%m-%d %H:%M:%S')} for p in photos],
+            'sensor_data': json.loads(i.sensor_data) if i.sensor_data else None, 
+            'timestamp': i.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    return jsonify(result)
 
 @app.route('/api/history/<int:id>', methods=['DELETE'])
 @login_required
 def delete_history(id):
-    db.session.delete(HistoryItem.query.get_or_404(id))
+    item = HistoryItem.query.get_or_404(id)
+    HistoryPhoto.query.filter_by(history_id=id).delete()
+    db.session.delete(item)
     db.session.commit()
     return jsonify({"message": "Deleted"}), 200
 
@@ -254,5 +296,69 @@ def delete_history(id):
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+# ====== ARKA PLAN FOTOĞRAF ÇEKİMİ ======
+def background_photo_capture():
+    """Her kamera için sürekli arka planda fotoğraf çeker"""
+    print("🔄 Background photo capture started")
+    
+    while True:
+        try:
+            with app.app_context():
+                cameras = Camera.query.all()
+                
+                for camera in cameras:
+                    try:
+                        # Son sensör verisini al
+                        last_sensor = SensorData.query.filter_by(camera_id=camera.id).order_by(SensorData.timestamp.desc()).first()
+                        
+                        if not last_sensor:
+                            continue
+                        
+                        temp = last_sensor.temperature
+                        
+                        # Sıcaklığa göre çekim aralığı
+                        if temp >= 28:
+                            interval = 5  # Alarm: 5 saniye
+                        elif temp >= 24:
+                            interval = 10  # Yüksek: 10 saniye
+                        elif temp >= 20:
+                            interval = 20  # Dikkat: 20 saniye
+                        else:
+                            interval = 30  # Normal: 30 saniye
+                        
+                        # Cache kontrolü
+                        now = datetime.datetime.now()
+                        if camera.id in photo_cache:
+                            _, cached_time = photo_cache[camera.id]
+                            if (now - cached_time).total_seconds() < interval:
+                                continue
+                        
+                        # Fotoğraf çek
+                        esp_ip = camera.ip_address if camera.ip_address.startswith("http") else f"http://{camera.ip_address}"
+                        resp = requests.get(f"{esp_ip}/capture", timeout=10)
+                        
+                        if resp.status_code == 200:
+                            filename = f"cam{camera.id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                            with open(filepath, 'wb') as f:
+                                f.write(resp.content)
+                            
+                            photo_url = f'http://localhost:5001/uploads/{filename}'
+                            photo_cache[camera.id] = (photo_url, now)
+                            print(f"📸 Camera {camera.id} ({camera.name}): Photo captured - {filename}")
+                        
+                    except Exception as e:
+                        print(f"❌ Camera {camera.id} error: {e}")
+                        continue
+                
+        except Exception as e:
+            print(f"❌ Background capture error: {e}")
+        
+        time.sleep(5)  # Her 5 saniyede kontrol et
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # Arka plan thread'ini başlat
+    capture_thread = threading.Thread(target=background_photo_capture, daemon=True)
+    capture_thread.start()
+    
+    app.run(host='0.0.0.0', port=5001, debug=True, use_reloader=False)
