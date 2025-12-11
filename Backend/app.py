@@ -224,7 +224,7 @@ def get_photos():
     
     try:
         esp_ip = camera.ip_address if camera.ip_address.startswith("http") else f"http://{camera.ip_address}"
-        resp = requests.get(f"{esp_ip}/capture", timeout=10)
+        resp = requests.get(f"{esp_ip}/capture", timeout=20)
         if resp.status_code == 200:
             filename = f"cam{camera_id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
             with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), 'wb') as f: f.write(resp.content)
@@ -305,16 +305,21 @@ def background_photo_capture():
         try:
             with app.app_context():
                 cameras = Camera.query.all()
+                print(f"📊 Found {len(cameras)} camera(s)")
                 
                 for camera in cameras:
                     try:
+                        print(f"\n⏳ Processing camera {camera.id} ({camera.name}) - IP: {camera.ip_address}")
+                        
                         # Son sensör verisini al
                         last_sensor = SensorData.query.filter_by(camera_id=camera.id).order_by(SensorData.timestamp.desc()).first()
                         
                         if not last_sensor:
+                            print(f"⚠️  Camera {camera.id}: No sensor data yet")
                             continue
                         
                         temp = last_sensor.temperature
+                        print(f"🌡️  Camera {camera.id}: Temperature = {temp}°C")
                         
                         # Sıcaklığa göre çekim aralığı
                         if temp >= 28:
@@ -330,12 +335,16 @@ def background_photo_capture():
                         now = datetime.datetime.now()
                         if camera.id in photo_cache:
                             _, cached_time = photo_cache[camera.id]
-                            if (now - cached_time).total_seconds() < interval:
+                            time_diff = (now - cached_time).total_seconds()
+                            if time_diff < interval:
+                                print(f"💾 Camera {camera.id}: Using cached photo (age: {time_diff:.1f}s, interval: {interval}s)")
                                 continue
                         
                         # Fotoğraf çek
                         esp_ip = camera.ip_address if camera.ip_address.startswith("http") else f"http://{camera.ip_address}"
-                        resp = requests.get(f"{esp_ip}/capture", timeout=10)
+                        print(f"📡 Camera {camera.id}: Connecting to {esp_ip}/capture (timeout: 20s)")
+                        
+                        resp = requests.get(f"{esp_ip}/capture", timeout=20)
                         
                         if resp.status_code == 200:
                             filename = f"cam{camera.id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
@@ -345,15 +354,21 @@ def background_photo_capture():
                             
                             photo_url = f'http://localhost:5001/uploads/{filename}'
                             photo_cache[camera.id] = (photo_url, now)
-                            print(f"📸 Camera {camera.id} ({camera.name}): Photo captured - {filename}")
+                            print(f"✅ Camera {camera.id}: Photo captured successfully - {filename}")
+                        else:
+                            print(f"⚠️  Camera {camera.id}: ESP32 returned status {resp.status_code}")
                         
+                    except requests.exceptions.Timeout:
+                        print(f"⏱️  Camera {camera.id}: Connection timeout (20s)")
+                    except requests.exceptions.ConnectionError as e:
+                        print(f"❌ Camera {camera.id}: Connection refused - {e}")
                     except Exception as e:
-                        print(f"❌ Camera {camera.id} error: {e}")
-                        continue
+                        print(f"❌ Camera {camera.id}: Error - {type(e).__name__}: {e}")
                 
         except Exception as e:
-            print(f"❌ Background capture error: {e}")
+            print(f"❌ Background capture error: {type(e).__name__}: {e}")
         
+        print(f"\n⏸️  Next check in 5 seconds...\n")
         time.sleep(5)  # Her 5 saniyede kontrol et
 
 if __name__ == '__main__':

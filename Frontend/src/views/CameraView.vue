@@ -17,6 +17,7 @@
           :history-item="selectedHistoryItem" 
           :camera-id="cameraId"
           @open-history="showHistoryDrawer = true" 
+          @show-history-with-data="showHistoryWithData"
         />
       </el-container>
       
@@ -41,13 +42,22 @@ import { ArrowLeft } from '@element-plus/icons-vue'
 
 const route = useRoute(), router = useRouter(),
       cameraId = ref(parseInt(route.params.id)), camera = ref(null),
+      allCameras = ref([]),
       showHistoryDrawer = ref(false), selectedHistoryItem = ref(null)
 
 const fetchCamera = async () => {
   try {
     const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
+    allCameras.value = data
     camera.value = data.find(c => c.id === cameraId.value)
   } catch { ElMessage.error('Failed to load camera') }
+}
+
+const switchCamera = (newCameraId) => {
+  // Update route and camera
+  router.push({ name: 'camera', params: { id: newCameraId } })
+  camera.value = allCameras.value.find(c => c.id === newCameraId)
+  selectedHistoryItem.value = null // Reset history when switching
 }
 
 const goBack = () => {
@@ -56,6 +66,10 @@ const goBack = () => {
   } else {
     router.push('/dashboard')
   }
+}
+
+const showHistoryWithData = (historyItem) => {
+  selectedHistoryItem.value = historyItem
 }
 
 onMounted(fetchCamera)
@@ -77,6 +91,7 @@ onMounted(fetchCamera)
   background: white;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 24px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -85,6 +100,10 @@ onMounted(fetchCamera)
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.camera-selector {
+  min-width: 200px;
 }
 
 .camera-header h2 {
