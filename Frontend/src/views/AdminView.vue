@@ -85,7 +85,7 @@ const users = ref([]), userFormRef = ref(null),
 
 const fetchUsers = async () => {
   try {
-    const { data } = await axios.get('http://localhost:5001/api/users', { withCredentials: true })
+    const { data } = await axios.get('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/users', { withCredentials: true })
     users.value = data
   } catch { ElMessage.error('Failed to load users') }
 }
@@ -94,7 +94,7 @@ const addUser = async () => {
   await userFormRef.value?.validate(async (valid) => {
     if (!valid) return
     try {
-      await axios.post('http://localhost:5001/api/users', userForm, { withCredentials: true })
+      await axios.post('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/users', userForm, { withCredentials: true })
       ElMessage.success('User added successfully')
       Object.assign(userForm, { username: '', password: '', is_admin: false })
       fetchUsers()
@@ -106,7 +106,7 @@ const deleteUser = async (id) => {
   try {
     await ElMessageBox.confirm('Are you sure you want to delete this user?', 'Warning', {
       confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning' })
-    await axios.delete(`http://localhost:5001/api/users/${id}`, { withCredentials: true })
+    await axios.delete(`https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/users/${id}`, { withCredentials: true })
     ElMessage.success('User deleted successfully'); fetchUsers()
   } catch (e) { if (e !== 'cancel') ElMessage.error('Failed to delete user') }
 }

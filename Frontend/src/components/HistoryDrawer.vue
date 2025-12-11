@@ -8,7 +8,7 @@
           <el-button type="danger" :icon="Delete" circle size="small" class="delete-btn"
             @click.stop="deleteHistory(item.id)" />
           <div class="history-images">
-            <div class="img-box"><span>Chart</span><el-image :src="`http://localhost:5001${item.chart_image}`"
+            <div class="img-box"><span>Chart</span><el-image :src="`https://conspiringly-desmotropic-tyisha.ngrok-free.dev${item.chart_image}`"
                 fit="cover" class="history-img" /></div>
             <div class="img-box" v-if="item.photo_image"><span>Photo</span><el-image :src="item.photo_image" fit="cover"
                 class="history-img" /></div>
@@ -32,7 +32,7 @@ const historyItems = ref([])
 
 const fetchHistory = async () => {
   try { 
-    const { data } = await axios.get('http://localhost:5001/api/history', {
+    const { data } = await axios.get('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/history', {
       params: props.cameraId ? { camera_id: props.cameraId } : {}, withCredentials: true })
     historyItems.value = data
   } catch { }
@@ -42,7 +42,7 @@ const deleteHistory = async (id) => {
   try {
     await ElMessageBox.confirm('Delete?', 'Warning', 
       { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
-    await axios.delete(`http://localhost:5001/api/history/${id}`, { withCredentials: true })
+    await axios.delete(`https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/history/${id}`, { withCredentials: true })
     ElMessage.success('Deleted'); fetchHistory()
   } catch { }
 }

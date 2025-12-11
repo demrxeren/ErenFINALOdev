@@ -45,7 +45,7 @@ const route = useRoute(), router = useRouter(),
 
 const fetchCamera = async () => {
   try {
-    const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
+    const { data } = await axios.get('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/cameras', { withCredentials: true })
     camera.value = data.find(c => c.id === cameraId.value)
   } catch { ElMessage.error('Failed to load camera') }
 }

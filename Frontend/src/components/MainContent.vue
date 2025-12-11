@@ -47,7 +47,6 @@
       </div>
       
       <el-card class="box-card picture-card" header="Picture Area">
-        <!-- Geçmiş Modunda Photo Grid (All Photos) -->
         <div v-if="historyItem && historyPhotos.length > 0" class="history-grid">
           <div v-for="(photo, index) in historyPhotos" :key="index" class="grid-item" @click="openPhotoDialog(photo)">
             <img :src="photo.url" :alt="`Photo ${index + 1}`" />
@@ -55,18 +54,16 @@
           </div>
         </div>
         
-        <!-- Normal Mod veya Tek Fotoğraf -->
         <div v-else class="image-wrapper">
           <img v-if="imgSrc" :src="imgSrc" />
           
           <div v-else class="no-photo-state">
-             <el-icon size="40"><Camera /></el-icon>
-             <span>{{ historyItem ? 'No Photo Saved' : 'Waiting for Auto Capture...' }}</span>
+              <el-icon size="40"><Camera /></el-icon>
+              <span>{{ historyItem ? 'No Photo Saved' : 'Waiting for Auto Capture...' }}</span>
           </div>
         </div>
       </el-card>
       
-      <!-- Fotoğraf Dialog -->
       <el-dialog v-model="photoDialogVisible" width="50%" :close-on-click-modal="true">
         <img v-if="selectedPhoto" :src="selectedPhoto.url" style="max-width: 100%; max-height: 70vh; width: auto; height: auto; display: block; margin: 0 auto;" />
         <template #header>
@@ -85,6 +82,9 @@ import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Camera } from '@element-plus/icons-vue'
 
+// Yeni ngrok adresi tanımlandı. TÜM API çağrıları bu adresi kullanacak.
+const API_BASE_URL = 'https://conspiringly-desmotropic-tyisha.ngrok-free.dev'
+
 const props = defineProps({ historyItem: Object, cameraId: { type: Number, default: 1 } })
 defineEmits(['open-history'])
 
@@ -100,9 +100,9 @@ const currentTemp = computed(() => rawData.value.length ? rawData.value[rawData.
 const captureStatus = computed(() => {
   const t = currentTemp.value
   return t >= 28 ? { title: 'ALARM', type: 'error', desc: 'Live Video Stream Active' } :
-         t >= 24 ? { title: 'High Alert', type: 'warning', desc: 'Capture: Every 10s' } :
-         t >= 20 ? { title: 'Attention', type: 'info', desc: 'Capture: Every 20s' } :
-         { title: 'Normal', type: 'success', desc: 'Capture: Every 30s' }
+           t >= 24 ? { title: 'High Alert', type: 'warning', desc: 'Capture: Every 10s' } :
+           t >= 20 ? { title: 'Attention', type: 'info', desc: 'Capture: Every 20s' } :
+           { title: 'Normal', type: 'success', desc: 'Capture: Every 30s' }
 })
 
 const manageAutoCapture = async () => {
@@ -112,7 +112,8 @@ const manageAutoCapture = async () => {
   if (temp >= 28) {
     if (!photoUrl.value?.includes('/stream')) {
       try {
-        const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
+        // Backend API çağrısı ngrok adresini kullanacak şekilde güncellendi
+        const { data } = await axios.get(`${API_BASE_URL}/api/cameras`, { withCredentials: true })
         const cam = data.find(c => c.id === props.cameraId)
         if (cam) {
           let baseUrl = cam.ip_address.startsWith('http') ? cam.ip_address : `http://${cam.ip_address}`
@@ -164,7 +165,8 @@ const renderChart = () => {
 const fetchData = async () => {
   if (props.historyItem || !chartInstance) return
   try {
-    const { data } = await axios.get('http://localhost:5001/api/data', { params: { camera_id: props.cameraId }, withCredentials: true })
+    // Backend API çağrısı ngrok adresini kullanacak şekilde güncellendi
+    const { data } = await axios.get(`${API_BASE_URL}/api/data`, { params: { camera_id: props.cameraId }, withCredentials: true })
     if (!data || !Array.isArray(data)) return
 
     if (!rawData.value.length) rawData.value = data
@@ -179,7 +181,8 @@ const fetchData = async () => {
 
 const getLatestPhoto = async () => {
   try {
-    const { data } = await axios.get('http://localhost:5001/api/photos', { params: { camera_id: props.cameraId }, withCredentials: true })
+    // Backend API çağrısı ngrok adresini kullanacak şekilde güncellendi
+    const { data } = await axios.get(`${API_BASE_URL}/api/photos`, { params: { camera_id: props.cameraId }, withCredentials: true })
     if (data[0]?.url && photoUrl.value !== data[0].url) {
       photoUrl.value = data[0].url
       capturedPhotos.value.push({ url: data[0].url, timestamp: new Date().toISOString() })
@@ -191,7 +194,8 @@ const getLatestPhoto = async () => {
 const saveData = async () => {
   if (!chartInstance) return
   try {
-    await axios.post('http://localhost:5001/api/save-history', {
+    // Backend API çağrısı ngrok adresini kullanacak şekilde güncellendi
+    await axios.post(`${API_BASE_URL}/api/save-history`, {
       camera_id: props.cameraId, chartImage: chartInstance.toBase64Image(),
       photoUrl: photoUrl.value, sensorData: rawData.value, photos: capturedPhotos.value
     }, { withCredentials: true })
@@ -202,7 +206,8 @@ const saveData = async () => {
 const clearAll = async () => {
   try {
     await ElMessageBox.confirm('Clear all data?', 'Warning', { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
-    await axios.delete('http://localhost:5001/api/data', { params: { camera_id: props.cameraId }, withCredentials: true })
+    // Backend API çağrısı ngrok adresini kullanacak şekilde güncellendi
+    await axios.delete(`${API_BASE_URL}/api/data`, { params: { camera_id: props.cameraId }, withCredentials: true })
     photoUrl.value = null; rawData.value = []; capturedPhotos.value = []; renderChart()
     ElMessage.success('Cleared')
   } catch {}
