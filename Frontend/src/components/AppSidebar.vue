@@ -76,7 +76,7 @@ const changePassword = async () => {
     if (!valid) return
     loading.value = true
     try {
-      await axios.post('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/change-password', {
+      await axios.post('http://localhost:5001/api/change-password', {
         current_password: form.currentPassword, new_password: form.newPassword
       }, { withCredentials: true })
       ElMessage.success('Şifre başarıyla değiştirildi')
@@ -91,7 +91,7 @@ const changePassword = async () => {
 
 const handleLogout = async () => {
   try {
-    await axios.post('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/logout', {}, { withCredentials: true })
+    await axios.post('http://localhost:5001/api/logout', {}, { withCredentials: true })
     localStorage.removeItem('user'); router.push('/login')
   } catch { ElMessage.error('Logout failed') }
 }

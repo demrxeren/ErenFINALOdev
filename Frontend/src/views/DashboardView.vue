@@ -61,7 +61,7 @@ const router = useRouter(), user = ref(null), cameras = ref([])
 
 const fetchCameras = async () => {
   try {
-    const { data } = await axios.get('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/cameras', { withCredentials: true })
+    const { data } = await axios.get('http://localhost:5001/api/cameras', { withCredentials: true })
     cameras.value = data
   } catch { ElMessage.error('Failed to load cameras') }
 }
@@ -73,7 +73,7 @@ const deleteCamera = async (id, name) => {
     await ElMessageBox.confirm(
       id === 1 ? `Are you sure you want to delete "${name}"? This is the main camera.` : `Delete camera "${name}"?`,
       'Warning', { confirmButtonText: 'Yes, Delete', cancelButtonText: 'Cancel', type: 'warning' })
-    await axios.delete(`https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/cameras/${id}`, { withCredentials: true })
+    await axios.delete(`http://localhost:5001/api/cameras/${id}`, { withCredentials: true })
     ElMessage.success('Camera deleted'); fetchCameras()
   } catch (e) { if (e !== 'cancel') ElMessage.error('Failed to delete camera') }
 }

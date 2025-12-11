@@ -7,18 +7,10 @@ from functools import wraps
 
 app = Flask(__name__)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-# Allow local dev, your Firebase hosting domains and the ngrok tunnel domain
-CORS(app, resources={r"/api/.*": {"origins": [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://erenfinalwebsite.web.app",
-    "https://erenespproject.web.app",
-    "https://conspiringly-desmotropic-tyisha.ngrok-free.dev"
-]}}, supports_credentials=True,
-    allow_headers=['Content-Type', 'Authorization', 'ngrok-skip-browser-warning', 'X-Requested-With'], 
-    methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
-app.config.update(SECRET_KEY='super-secret-key-change-in-production', SESSION_COOKIE_SAMESITE='None',
-    SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_DOMAIN=None,
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}}, supports_credentials=True,
+     allow_headers=['Content-Type', 'Authorization'], methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+app.config.update(SECRET_KEY='super-secret-key-change-in-production', SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=False, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_DOMAIN=None,
     SQLALCHEMY_DATABASE_URI=f'sqlite:///{os.path.join(BASE_DIR, "instance", "data.db")}',
     UPLOAD_FOLDER=os.path.join(BASE_DIR, 'uploads'), SQLALCHEMY_TRACK_MODIFICATIONS=False)
 
@@ -90,22 +82,13 @@ def admin_required(f):
         return f(*args, **kwargs) if user and user.is_admin else (jsonify({"error": "Admin access required"}), 403)
     return decorated
 
-@app.after_request
-def after_request(response):
-    print(f"Response Headers for {request.method} {request.path}: {response.headers}")
-    return response
-
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
-    print(f"Login attempt for user: {data.get('username')}")
-    print(f"Request Origin: {request.headers.get('Origin')}")
     user = User.query.filter_by(username=data.get('username')).first()
     if user and user.check_password(data.get('password')):
         session['user_id'], session['is_admin'] = user.id, user.is_admin
-        print("Login successful, session set.")
         return jsonify({"message": "Login successful", "user": {"id": user.id, "username": user.username, "is_admin": user.is_admin}}), 200
-    print("Login failed: Invalid credentials")
     return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route('/api/logout', methods=['POST'])
@@ -245,8 +228,7 @@ def get_photos():
         if resp.status_code == 200:
             filename = f"cam{camera_id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
             with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), 'wb') as f: f.write(resp.content)
-            # Use public ngrok host for uploaded file URLs so frontend can access them
-            photo_url = f'https://conspiringly-desmotropic-tyisha.ngrok-free.dev/uploads/{filename}'
+            photo_url = f'http://localhost:5001/uploads/{filename}'
             # Cache'e kaydet
             photo_cache[camera_id] = (photo_url, now)
             return jsonify([{'url': photo_url}])
@@ -361,8 +343,7 @@ def background_photo_capture():
                             with open(filepath, 'wb') as f:
                                 f.write(resp.content)
                             
-                            # Use public ngrok host for uploaded file URLs
-                            photo_url = f'https://conspiringly-desmotropic-tyisha.ngrok-free.dev/uploads/{filename}'
+                            photo_url = f'http://localhost:5001/uploads/{filename}'
                             photo_cache[camera.id] = (photo_url, now)
                             print(f"📸 Camera {camera.id} ({camera.name}): Photo captured - {filename}")
                         

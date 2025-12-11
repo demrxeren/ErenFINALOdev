@@ -5,7 +5,6 @@
 #include <ArduinoJson.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
-#include "DHT.h"
 
 // ================= AYARLAR =================
 const char* ssid = "HONOR 200 Pro";
@@ -17,11 +16,11 @@ String uploadUrl = serverBase + "/api/sensor-upload";
 String registerUrl = serverBase + "/api/register-device";
 int CAMERA_ID = 0;
 
-// DHT Sensör Ayarları
-#define DHTPIN 13     // DHT11'in bağlı olduğu pin (Eski RXD2 pini)
-#define DHTTYPE DHT11 // DHT 11
-
-DHT dht(DHTPIN, DHTTYPE);
+// Arduino İletişim Pinleri (ESP32-CAM için güvenli pinler)
+// Arduino TX (Pin 11) -> ESP32 RX (GPIO 13)
+// Arduino RX (Pin 10) -> ESP32 TX (GPIO 12)
+#define RXD2 13
+#define TXD2 12
 
 // Kamera Pinleri
 #define PWDN_GPIO_NUM     32
@@ -46,63 +45,60 @@ httpd_handle_t camera_httpd = NULL;
 
 // --- YARDIMCI FONKSİYON: Sensör Verisini Oku ve Gönder ---
 // Bu fonksiyon SADECE loop() içinde çağrılacak
-unsigned long lastDHTReadTime = 0;
-const long dhtInterval = 10000; // 10 saniyede bir oku
-
 void handleSensorData() {
-    unsigned long currentMillis = millis();
-    if (currentMillis - lastDHTReadTime >= dhtInterval) {
-        lastDHTReadTime = currentMillis;
-
-        float humidity = dht.readHumidity();
-        float temperature = dht.readTemperature();
-
-        // Hata kontrolü
-        if (isnan(humidity) || isnan(temperature)) {
-            Serial.println("DHT sensorunden veri okunamadi!");
-            return;
-        }
-
-        Serial.print("DHT11 Verisi -> Sicaklik: ");
-        Serial.print(temperature);
-        Serial.print(", Nem: ");
-        Serial.println(humidity);
-
-        if(WiFi.status() == WL_CONNECTED){
-            HTTPClient http;
-            http.begin(uploadUrl);
-            http.addHeader("Content-Type", "application/json");
+    if (Serial2.available()) {
+        String data = Serial2.readStringUntil('\n');
+        data.trim(); 
+        
+        if (data.length() > 0 && data.startsWith("{")) {
+            DynamicJsonDocument doc(1024);
+            DeserializationError error = deserializeJson(doc, data);
             
-            // Backend için doğru JSON yapısı
-            DynamicJsonDocument sendDoc(512);
-            // Kendi ID'sini kullan
-            if (CAMERA_ID > 0) {
-                sendDoc["camera_id"] = CAMERA_ID;
+            if (!error) {
+                int targetID = doc["target_id"];
+                float temperature = doc["temperature"];
+                float humidity = doc["humidity"];
+                
+                Serial.print("Arduino'dan Veri Alindi -> ID: ");
+                Serial.print(targetID);
+                Serial.print(", Sicaklik: ");
+                Serial.print(temperature);
+                Serial.print(", Nem: ");
+                Serial.println(humidity);
+
+                if(WiFi.status() == WL_CONNECTED){
+                    HTTPClient http;
+                    http.begin(uploadUrl);
+                    http.addHeader("Content-Type", "application/json");
+                    
+                    // Backend için doğru JSON yapısı
+                    DynamicJsonDocument sendDoc(512);
+                    sendDoc["camera_id"] = targetID;
+                    sendDoc["temperature"] = temperature;
+                    sendDoc["humidity"] = humidity;
+                    
+                    String jsonOutput;
+                    serializeJson(sendDoc, jsonOutput);
+                    
+                    Serial.println("Backend'e Gonderiliyor: " + jsonOutput);
+                    
+                    int httpResponseCode = http.POST(jsonOutput);
+                    
+                    if(httpResponseCode > 0) {
+                        Serial.print("Backend Yaniti: ");
+                        Serial.println(httpResponseCode);
+                    } else {
+                        Serial.print("Hata: ");
+                        Serial.println(httpResponseCode);
+                    }
+                    
+                    http.end();
+                } else {
+                    Serial.println("WiFi Bagli Degil!");
+                }
             } else {
-                // ID alınamadıysa varsayılan 1 gönder veya gönderme
-                sendDoc["camera_id"] = 1; 
+                Serial.println("JSON parse hatasi!");
             }
-            sendDoc["temperature"] = temperature;
-            sendDoc["humidity"] = humidity;
-            
-            String jsonOutput;
-            serializeJson(sendDoc, jsonOutput);
-            
-            Serial.println("Backend'e Gonderiliyor: " + jsonOutput);
-            
-            int httpResponseCode = http.POST(jsonOutput);
-            
-            if(httpResponseCode > 0) {
-                Serial.print("Backend Yaniti: ");
-                Serial.println(httpResponseCode);
-            } else {
-                Serial.print("Hata: ");
-                Serial.println(httpResponseCode);
-            }
-            
-            http.end();
-        } else {
-            Serial.println("WiFi Bagli Degil!");
         }
     }
 }
@@ -250,11 +246,10 @@ void getCameraID() {
 void setup() {
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
     Serial.begin(9600);  // USB Debug
-    // Serial2 iptal edildi, artik DHT11 okunacak
-    dht.begin();
+    Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);  // Arduino İletişim
     
     Serial.println("ESP32-CAM Baslatiliyor...");
-    Serial.println("DHT11 Sensoru Baslatildi (GPIO 13)");
+    Serial.println("Arduino verisi bekleniyor (GPIO 13 RX)");
     
     pinMode(FLASH_LED_PIN, OUTPUT);
     

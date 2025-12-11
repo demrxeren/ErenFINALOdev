@@ -61,7 +61,7 @@ const handleLogin = async () => {
     if (!valid) return
     loading.value = true
     try {
-      const { data } = await axios.post('https://conspiringly-desmotropic-tyisha.ngrok-free.dev/api/login', form, { withCredentials: true })
+      const { data } = await axios.post('http://localhost:5001/api/login', form, { withCredentials: true })
       localStorage.setItem('user', JSON.stringify(data.user))
       ElMessage.success('Login successful!'); router.push('/dashboard')
     } catch (e) {
