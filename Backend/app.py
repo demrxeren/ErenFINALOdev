@@ -9,10 +9,13 @@ app = Flask(__name__)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}}, supports_credentials=True,
      allow_headers=['Content-Type', 'Authorization'], methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
-app.config.update(SECRET_KEY='super-secret-key-change-in-production', SESSION_COOKIE_SAMESITE='Lax',
-    SESSION_COOKIE_SECURE=False, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_DOMAIN=None,
-    SQLALCHEMY_DATABASE_URI=f'sqlite:///{os.path.join(BASE_DIR, "instance", "data.db")}',
-    UPLOAD_FOLDER=os.path.join(BASE_DIR, 'uploads'), SQLALCHEMY_TRACK_MODIFICATIONS=False)
+CFG = {
+    'SECRET_KEY': 'super-secret-key-change-in-production', 'SESSION_COOKIE_SAMESITE': 'Lax',
+    'SESSION_COOKIE_SECURE': False, 'SESSION_COOKIE_HTTPONLY': True, 'SESSION_COOKIE_DOMAIN': None,
+    'SQLALCHEMY_DATABASE_URI': f'sqlite:///{os.path.join(BASE_DIR, "instance", "data.db")}',
+    'UPLOAD_FOLDER': os.path.join(BASE_DIR, 'uploads'), 'SQLALCHEMY_TRACK_MODIFICATIONS': False
+}
+app.config.update(CFG)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, 'instance'), exist_ok=True)
@@ -27,8 +30,8 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
-    def set_password(self, password): self.password_hash = generate_password_hash(password)
-    def check_password(self, password): return check_password_hash(self.password_hash, password)
+    def set_password(self, pwd): self.password_hash = generate_password_hash(pwd)
+    def check_password(self, pwd): return check_password_hash(self.password_hash, pwd)
 
 class Camera(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -70,25 +73,25 @@ with app.app_context():
 
 def login_required(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
-        return f(*args, **kwargs) if 'user_id' in session else (jsonify({"error": "Unauthorized"}), 401)
-    return decorated
+    def dec(*a, **kw):
+        return f(*a, **kw) if 'user_id' in session else (jsonify({"error": "Unauthorized"}), 401)
+    return dec
 
 def admin_required(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
+    def dec(*a, **kw):
         if 'user_id' not in session: return jsonify({"error": "Unauthorized"}), 401
-        user = User.query.get(session['user_id'])
-        return f(*args, **kwargs) if user and user.is_admin else (jsonify({"error": "Admin access required"}), 403)
-    return decorated
+        u = User.query.get(session['user_id'])
+        return f(*a, **kw) if u and u.is_admin else (jsonify({"error": "Admin access required"}), 403)
+    return dec
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    user = User.query.filter_by(username=data.get('username')).first()
-    if user and user.check_password(data.get('password')):
-        session['user_id'], session['is_admin'] = user.id, user.is_admin
-        return jsonify({"message": "Login successful", "user": {"id": user.id, "username": user.username, "is_admin": user.is_admin}}), 200
+    d = request.get_json()
+    u = User.query.filter_by(username=d.get('username')).first()
+    if u and u.check_password(d.get('password')):
+        session['user_id'], session['is_admin'] = u.id, u.is_admin
+        return jsonify({"message": "Login successful", "user": {"id": u.id, "username": u.username, "is_admin": u.is_admin}}), 200
     return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route('/api/logout', methods=['POST'])
@@ -99,41 +102,41 @@ def logout():
 @app.route('/api/change-password', methods=['POST'])
 @login_required
 def change_password():
-    data = request.get_json()
-    curr, new = data.get('current_password'), data.get('new_password')
-    if not curr or not new: return jsonify({"error": "Tüm alanlar gerekli"}), 400
-    user = User.query.get(session['user_id'])
-    if not user.check_password(curr): return jsonify({"error": "Mevcut şifre yanlış"}), 400
-    if len(new) < 6: return jsonify({"error": "Yeni şifre en az 6 karakter olmalı"}), 400
-    user.set_password(new)
+    d = request.get_json()
+    c, n = d.get('current_password'), d.get('new_password')
+    if not c or not n: return jsonify({"error": "Tüm alanlar gerekli"}), 400
+    u = User.query.get(session['user_id'])
+    if not u.check_password(c): return jsonify({"error": "Mevcut şifre yanlış"}), 400
+    if len(n) < 6: return jsonify({"error": "Yeni şifre en az 6 karakter olmalı"}), 400
+    u.set_password(n)
     db.session.commit()
     return jsonify({"message": "Şifre başarıyla değiştirildi"}), 200
 
 @app.route('/api/me', methods=['GET'])
 @login_required
 def get_current_user():
-    user = User.query.get(session['user_id'])
-    return jsonify({"id": user.id, "username": user.username, "is_admin": user.is_admin})
+    u = User.query.get(session['user_id'])
+    return jsonify({"id": u.id, "username": u.username, "is_admin": u.is_admin})
 
 @app.route('/api/users', methods=['GET', 'POST'])
 @admin_required
 def manage_users():
     if request.method == 'POST':
-        data = request.get_json()
-        if User.query.filter_by(username=data.get('username')).first(): 
+        d = request.get_json()
+        if User.query.filter_by(username=d.get('username')).first(): 
             return jsonify({"error": "Username already exists"}), 400
-        user = User(username=data.get('username'), is_admin=data.get('is_admin', False))
-        user.set_password(data.get('password'))
-        db.session.add(user); db.session.commit()
-        return jsonify({"message": "User created", "id": user.id}), 201
+        u = User(username=d.get('username'), is_admin=d.get('is_admin', False))
+        u.set_password(d.get('password'))
+        db.session.add(u); db.session.commit()
+        return jsonify({"message": "User created", "id": u.id}), 201
     return jsonify([{"id": u.id, "username": u.username, "is_admin": u.is_admin} for u in User.query.all()])
 
 @app.route('/api/users/<int:id>', methods=['DELETE'])
 @admin_required
 def delete_user(id):
-    user = User.query.get_or_404(id)
-    if user.username == 'admin': return jsonify({"error": "Cannot delete admin user"}), 400
-    db.session.delete(user); db.session.commit()
+    u = User.query.get_or_404(id)
+    if u.username == 'admin': return jsonify({"error": "Cannot delete admin user"}), 400
+    db.session.delete(u); db.session.commit()
     return jsonify({"message": "User deleted"}), 200
 
 @app.route('/api/cameras', methods=['GET', 'POST'])
@@ -142,11 +145,11 @@ def manage_cameras():
     try:
         if request.method == 'POST':
             if not session.get('is_admin'): return jsonify({"error": "Admin access required"}), 403
-            data = request.get_json()
-            camera = Camera(name=data.get('name'), ip_address=data.get('ip_address'), location=data.get('location'))
-            db.session.add(camera)
+            d = request.get_json()
+            c = Camera(name=d.get('name'), ip_address=d.get('ip_address'), location=d.get('location'))
+            db.session.add(c)
             db.session.commit()
-            return jsonify({"message": "Camera added", "id": camera.id}), 201
+            return jsonify({"message": "Camera added", "id": c.id}), 201
         return jsonify([{"id": c.id, "name": c.name, "ip_address": c.ip_address, "location": c.location} for c in Camera.query.all()])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -154,44 +157,44 @@ def manage_cameras():
 @app.route('/api/cameras/<int:id>', methods=['PUT', 'DELETE'])
 @admin_required
 def modify_camera(id):
-    camera = Camera.query.get_or_404(id)
+    c = Camera.query.get_or_404(id)
     if request.method == 'PUT':
-        data = request.get_json()
-        camera.name = data.get('name', camera.name)
-        camera.ip_address = data.get('ip_address', camera.ip_address)
-        camera.location = data.get('location', camera.location)
+        d = request.get_json()
+        c.name = d.get('name', c.name)
+        c.ip_address = d.get('ip_address', c.ip_address)
+        c.location = d.get('location', c.location)
         db.session.commit()
         return jsonify({"message": "Camera updated"}), 200
-    db.session.delete(camera); db.session.commit()
+    db.session.delete(c); db.session.commit()
     return jsonify({"message": "Camera deleted"}), 200
 
 @app.route('/api/register-device', methods=['POST'])
 def register_device():
     try:
-        data = request.get_json()
-        mac, ip = data.get('mac_address'), request.remote_addr
-        if not mac: return jsonify({"error": "MAC address required"}), 400
-        camera = Camera.query.filter_by(mac_address=mac).first()
-        if camera:
-            camera.ip_address = f"http://{ip}"
+        d = request.get_json()
+        m, ip = d.get('mac_address'), request.remote_addr
+        if not m: return jsonify({"error": "MAC address required"}), 400
+        c = Camera.query.filter_by(mac_address=m).first()
+        if c:
+            c.ip_address = f"http://{ip}"
             db.session.commit()
         else:
-            camera = Camera(name=f"Camera {Camera.query.count() + 1}", ip_address=f"http://{ip}", location="New Device", mac_address=mac)
-            db.session.add(camera)
+            c = Camera(name=f"Camera {Camera.query.count() + 1}", ip_address=f"http://{ip}", location="New Device", mac_address=m)
+            db.session.add(c)
             db.session.commit()
-        return jsonify({"id": camera.id, "name": camera.name})
+        return jsonify({"id": c.id, "name": c.name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/sensor-upload', methods=['POST'])
 def upload_sensor():
     try:
-        data = request.get_json()
-        camera_id = data.get('camera_id', 1)
-        if not Camera.query.get(camera_id): 
+        d = request.get_json()
+        c_id = d.get('camera_id', 1)
+        if not Camera.query.get(c_id): 
             return jsonify({"error": "Camera not found. Please restart ESP32 to register."}), 404
-        db.session.add(SensorData(camera_id=camera_id, temperature=float(data['temperature']), 
-                                   humidity=float(data['humidity'])))
+        db.session.add(SensorData(camera_id=c_id, temperature=float(d['temperature']), 
+                                   humidity=float(d['humidity'])))
         db.session.commit()
         return jsonify({"message": "Data received"}), 201
     except Exception as e:
@@ -200,38 +203,36 @@ def upload_sensor():
 @app.route('/api/data', methods=['GET', 'DELETE'])
 @login_required
 def handle_data():
-    camera_id = request.args.get('camera_id', 1, type=int)
+    c_id = request.args.get('camera_id', 1, type=int)
     if request.method == 'DELETE':
-        SensorData.query.filter_by(camera_id=camera_id).delete()
+        SensorData.query.filter_by(camera_id=c_id).delete()
         db.session.commit()
         return jsonify({"message": "Cleared"}), 200
-    data = SensorData.query.filter_by(camera_id=camera_id).order_by(SensorData.timestamp.desc()).all()
-    return jsonify([{'id': r.id, 'temperature': r.temperature, 'humidity': r.humidity, 'timestamp': r.timestamp.strftime('%Y-%m-%d %H:%M:%S')} for r in data[::-1]])
+    d = SensorData.query.filter_by(camera_id=c_id).order_by(SensorData.timestamp.desc()).all()
+    return jsonify([{'id': r.id, 'temperature': r.temperature, 'humidity': r.humidity, 'timestamp': r.timestamp.strftime('%Y-%m-%d %H:%M:%S')} for r in d[::-1]])
 
 @app.route('/api/photos', methods=['GET'])
 @login_required
 def get_photos():
-    camera_id = request.args.get('camera_id', 1, type=int)
-    camera = Camera.query.get(camera_id)
-    if not camera: return jsonify([{'url': 'https://placehold.co/320x240?text=Camera+Not+Found'}]), 404
+    c_id = request.args.get('camera_id', 1, type=int)
+    c = Camera.query.get(c_id)
+    if not c: return jsonify([{'url': 'https://placehold.co/320x240?text=Camera+Not+Found'}]), 404
     
-    # Cache kontrolü: Son 5 saniye içinde çekilmiş fotoğraf varsa onu döndür
     now = datetime.datetime.now()
-    if camera_id in photo_cache:
-        cached_photo, cached_time = photo_cache[camera_id]
-        if (now - cached_time).total_seconds() < 5:
-            return jsonify([{'url': cached_photo}])
+    if c_id in photo_cache:
+        p_url, p_time = photo_cache[c_id]
+        if (now - p_time).total_seconds() < 5:
+            return jsonify([{'url': p_url}])
     
     try:
-        esp_ip = camera.ip_address if camera.ip_address.startswith("http") else f"http://{camera.ip_address}"
-        resp = requests.get(f"{esp_ip}/capture", timeout=20)
-        if resp.status_code == 200:
-            filename = f"cam{camera_id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-            with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), 'wb') as f: f.write(resp.content)
-            photo_url = f'http://localhost:5001/uploads/{filename}'
-            # Cache'e kaydet
-            photo_cache[camera_id] = (photo_url, now)
-            return jsonify([{'url': photo_url}])
+        ip = c.ip_address if c.ip_address.startswith("http") else f"http://{c.ip_address}"
+        r = requests.get(f"{ip}/capture", timeout=20)
+        if r.status_code == 200:
+            fn = f"cam{c_id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+            with open(os.path.join(app.config['UPLOAD_FOLDER'], fn), 'wb') as f: f.write(r.content)
+            pu = f'http://localhost:5001/uploads/{fn}'
+            photo_cache[c_id] = (pu, now)
+            return jsonify([{'url': pu}])
         return jsonify([{'url': 'https://placehold.co/320x240?text=ESP32+Error'}]), 502
     except Exception as e:
         print(f"Photo capture error: {e}")
@@ -241,24 +242,19 @@ def get_photos():
 @login_required
 def save_history():
     try:
-        data = request.get_json()
-        camera_id = data.get('camera_id', 1)
-        filename = f"chart_cam{camera_id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.png"
-        if data.get('chartImage'):
-            img_data = data['chartImage'].split(',', 1)[1] if ',' in data['chartImage'] else data['chartImage']
-            with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), "wb") as f: f.write(base64.b64decode(img_data))
-        item = HistoryItem(camera_id=camera_id, chart_image=filename, photo_image=data.get('photoUrl'), sensor_data=json.dumps(data.get('sensorData')))
-        db.session.add(item)
-        db.session.flush()  # ID'yi almak için
-        
-        # Birden fazla fotoğraf kaydet
-        photos = data.get('photos', [])
-        for photo_data in photos:
-            photo = HistoryPhoto(history_id=item.id, photo_url=photo_data['url'], timestamp=datetime.datetime.fromisoformat(photo_data['timestamp']))
-            db.session.add(photo)
-        
+        d = request.get_json()
+        c_id = d.get('camera_id', 1)
+        fn = f"chart_cam{c_id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.png"
+        if d.get('chartImage'):
+            img = d['chartImage'].split(',', 1)[1] if ',' in d['chartImage'] else d['chartImage']
+            with open(os.path.join(app.config['UPLOAD_FOLDER'], fn), "wb") as f: f.write(base64.b64decode(img))
+        itm = HistoryItem(camera_id=c_id, chart_image=fn, photo_image=d.get('photoUrl'), sensor_data=json.dumps(d.get('sensorData')))
+        db.session.add(itm)
+        db.session.flush()
+        for p in d.get('photos', []):
+            db.session.add(HistoryPhoto(history_id=itm.id, photo_url=p['url'], timestamp=datetime.datetime.fromisoformat(p['timestamp'])))
         db.session.commit()
-        return jsonify({"message": "Saved", "id": item.id}), 201
+        return jsonify({"message": "Saved", "id": itm.id}), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
@@ -266,29 +262,25 @@ def save_history():
 @app.route('/api/history', methods=['GET'])
 @login_required
 def get_history():
-    camera_id = request.args.get('camera_id', type=int)
-    query = HistoryItem.query.filter_by(camera_id=camera_id) if camera_id else HistoryItem.query
-    items = query.order_by(HistoryItem.timestamp.desc()).limit(10).all()
-    result = []
-    for i in items:
-        photos = HistoryPhoto.query.filter_by(history_id=i.id).order_by(HistoryPhoto.timestamp.desc()).all()
-        result.append({
-            'id': i.id, 
-            'camera_id': i.camera_id, 
-            'chart_image': f'/uploads/{i.chart_image}', 
-            'photo_image': i.photo_image, 
-            'photos': [{'url': p.photo_url, 'timestamp': p.timestamp.strftime('%Y-%m-%d %H:%M:%S')} for p in photos],
-            'sensor_data': json.loads(i.sensor_data) if i.sensor_data else None, 
-            'timestamp': i.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    c_id = request.args.get('camera_id', type=int)
+    q = HistoryItem.query.filter_by(camera_id=c_id) if c_id else HistoryItem.query
+    itms = q.order_by(HistoryItem.timestamp.desc()).limit(10).all()
+    res = []
+    for i in itms:
+        ps = HistoryPhoto.query.filter_by(history_id=i.id).order_by(HistoryPhoto.timestamp.desc()).all()
+        res.append({
+            'id': i.id, 'camera_id': i.camera_id, 'chart_image': f'/uploads/{i.chart_image}', 
+            'photo_image': i.photo_image, 'photos': [{'url': p.photo_url, 'timestamp': p.timestamp.strftime('%Y-%m-%d %H:%M:%S')} for p in ps],
+            'sensor_data': json.loads(i.sensor_data) if i.sensor_data else None, 'timestamp': i.timestamp.strftime('%Y-%m-%d %H:%M:%S')
         })
-    return jsonify(result)
+    return jsonify(res)
 
 @app.route('/api/history/<int:id>', methods=['DELETE'])
 @login_required
 def delete_history(id):
-    item = HistoryItem.query.get_or_404(id)
+    itm = HistoryItem.query.get_or_404(id)
     HistoryPhoto.query.filter_by(history_id=id).delete()
-    db.session.delete(item)
+    db.session.delete(itm)
     db.session.commit()
     return jsonify({"message": "Deleted"}), 200
 
@@ -300,76 +292,50 @@ def uploaded_file(filename):
 def background_photo_capture():
     """Her kamera için sürekli arka planda fotoğraf çeker"""
     print("🔄 Background photo capture started")
-    
     while True:
         try:
             with app.app_context():
                 cameras = Camera.query.all()
                 print(f"📊 Found {len(cameras)} camera(s)")
-                
-                for camera in cameras:
+                for c in cameras:
                     try:
-                        print(f"\n⏳ Processing camera {camera.id} ({camera.name}) - IP: {camera.ip_address}")
-                        
-                        # Son sensör verisini al
-                        last_sensor = SensorData.query.filter_by(camera_id=camera.id).order_by(SensorData.timestamp.desc()).first()
-                        
-                        if not last_sensor:
-                            print(f"⚠️  Camera {camera.id}: No sensor data yet")
+                        print(f"\n⏳ Processing camera {c.id} ({c.name}) - IP: {c.ip_address}")
+                        ls = SensorData.query.filter_by(camera_id=c.id).order_by(SensorData.timestamp.desc()).first()
+                        if not ls:
+                            print(f"⚠️  Camera {c.id}: No sensor data yet")
                             continue
-                        
-                        temp = last_sensor.temperature
-                        print(f"🌡️  Camera {camera.id}: Temperature = {temp}°C")
-                        
-                        # Sıcaklığa göre çekim aralığı
-                        if temp >= 28:
-                            interval = 5  # Alarm: 5 saniye
-                        elif temp >= 24:
-                            interval = 10  # Yüksek: 10 saniye
-                        elif temp >= 20:
-                            interval = 20  # Dikkat: 20 saniye
-                        else:
-                            interval = 30  # Normal: 30 saniye
-                        
-                        # Cache kontrolü
+                        t = ls.temperature
+                        print(f"🌡️  Camera {c.id}: Temperature = {t}°C")
+                        iv = 5 if t >= 28 else (10 if t >= 24 else (20 if t >= 20 else 30))
                         now = datetime.datetime.now()
-                        if camera.id in photo_cache:
-                            _, cached_time = photo_cache[camera.id]
-                            time_diff = (now - cached_time).total_seconds()
-                            if time_diff < interval:
-                                print(f"💾 Camera {camera.id}: Using cached photo (age: {time_diff:.1f}s, interval: {interval}s)")
+                        if c.id in photo_cache:
+                            _, ct = photo_cache[c.id]
+                            td = (now - ct).total_seconds()
+                            if td < iv:
+                                print(f"💾 Camera {c.id}: Using cached photo (age: {td:.1f}s, interval: {iv}s)")
                                 continue
-                        
-                        # Fotoğraf çek
-                        esp_ip = camera.ip_address if camera.ip_address.startswith("http") else f"http://{camera.ip_address}"
-                        print(f"📡 Camera {camera.id}: Connecting to {esp_ip}/capture (timeout: 20s)")
-                        
-                        resp = requests.get(f"{esp_ip}/capture", timeout=20)
-                        
-                        if resp.status_code == 200:
-                            filename = f"cam{camera.id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                            with open(filepath, 'wb') as f:
-                                f.write(resp.content)
-                            
-                            photo_url = f'http://localhost:5001/uploads/{filename}'
-                            photo_cache[camera.id] = (photo_url, now)
-                            print(f"✅ Camera {camera.id}: Photo captured successfully - {filename}")
+                        ei = c.ip_address if c.ip_address.startswith("http") else f"http://{c.ip_address}"
+                        print(f"📡 Camera {c.id}: Connecting to {ei}/capture (timeout: 20s)")
+                        rp = requests.get(f"{ei}/capture", timeout=20)
+                        if rp.status_code == 200:
+                            fn = f"cam{c.id}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+                            fp = os.path.join(app.config['UPLOAD_FOLDER'], fn)
+                            with open(fp, 'wb') as f: f.write(rp.content)
+                            pu = f'http://localhost:5001/uploads/{fn}'
+                            photo_cache[c.id] = (pu, now)
+                            print(f"✅ Camera {c.id}: Photo captured successfully - {fn}")
                         else:
-                            print(f"⚠️  Camera {camera.id}: ESP32 returned status {resp.status_code}")
-                        
+                            print(f"⚠️  Camera {c.id}: ESP32 returned status {rp.status_code}")
                     except requests.exceptions.Timeout:
-                        print(f"⏱️  Camera {camera.id}: Connection timeout (20s)")
+                        print(f"⏱️  Camera {c.id}: Connection timeout (20s)")
                     except requests.exceptions.ConnectionError as e:
-                        print(f"❌ Camera {camera.id}: Connection refused - {e}")
+                        print(f"❌ Camera {c.id}: Connection refused - {e}")
                     except Exception as e:
-                        print(f"❌ Camera {camera.id}: Error - {type(e).__name__}: {e}")
-                
+                        print(f"❌ Camera {c.id}: Error - {type(e).__name__}: {e}")
         except Exception as e:
             print(f"❌ Background capture error: {type(e).__name__}: {e}")
-        
         print(f"\n⏸️  Next check in 5 seconds...\n")
-        time.sleep(5)  # Her 5 saniyede kontrol et
+        time.sleep(5)
 
 if __name__ == '__main__':
     # Arka plan thread'ini başlat

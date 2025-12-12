@@ -1,14 +1,14 @@
 <template>
   <el-drawer :model-value="visible" @update:model-value="$emit('update:visible', $event)" title="Recent History"
     size="300px" @open="fetchHistory">
-    <el-timeline v-if="historyItems.length">
-      <el-timeline-item v-for="item in historyItems" :key="item.id" :timestamp="item.timestamp" placement="top">
+    <el-timeline v-if="items.length">
+      <el-timeline-item v-for="item in items" :key="item.id" :timestamp="item.timestamp" placement="top">
         <el-card shadow="hover" :body-style="{ padding: '10px', position: 'relative' }"
           @click="$emit('select-item', item)">
           <el-button type="danger" :icon="Delete" circle size="small" class="delete-btn"
             @click.stop="deleteHistory(item.id)" />
           <div class="history-images">
-            <div class="img-box"><span>Chart</span><el-image :src="`http://localhost:5001${item.chart_image}`"
+            <div class="img-box"><span>Chart</span><el-image :src="`${SB}${item.chart_image}`"
                 fit="cover" class="history-img" /></div>
             <div class="img-box" v-if="item.photo_image"><span>Photo</span><el-image :src="resolvePhoto(item.photo_image)" fit="cover"
               class="history-img" /></div>
@@ -28,21 +28,16 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps({ visible: Boolean, cameraId: Number })
 defineEmits(['update:visible', 'select-item'])
-const historyItems = ref([])
-const serverBase = 'http://localhost:5001'
+const items = ref([])
+const SB = 'http://localhost:5001'
 
-const resolvePhoto = (url) => {
-  if (!url) return ''
-  // If backend returned a relative path, prefix with server base
-  if (url.startsWith('/')) return `${serverBase}${url}`
-  return url
-}
+const resolvePhoto = (url) => url ? (url.startsWith('/') ? `${SB}${url}` : url) : ''
 
 const fetchHistory = async () => {
   try { 
-    const { data } = await axios.get('http://localhost:5001/api/history', {
+    const { data } = await axios.get(`${SB}/api/history`, {
       params: props.cameraId ? { camera_id: props.cameraId } : {}, withCredentials: true })
-    historyItems.value = data
+    items.value = data
   } catch { }
 }
 
@@ -50,7 +45,7 @@ const deleteHistory = async (id) => {
   try {
     await ElMessageBox.confirm('Delete?', 'Warning', 
       { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
-    await axios.delete(`http://localhost:5001/api/history/${id}`, { withCredentials: true })
+    await axios.delete(`${SB}/api/history/${id}`, { withCredentials: true })
     ElMessage.success('Deleted'); fetchHistory()
   } catch { }
 }

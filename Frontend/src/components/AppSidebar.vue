@@ -97,8 +97,8 @@ const handleLogout = async () => {
 }
 
 onMounted(() => {
-  const userData = localStorage.getItem('user')
-  if (userData) user.value = JSON.parse(userData)
+  const u = localStorage.getItem('user')
+  if (u) user.value = JSON.parse(u)
 })
 </script>
 

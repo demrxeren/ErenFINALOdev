@@ -108,14 +108,15 @@ import Chart from 'chart.js/auto'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Camera } from '@element-plus/icons-vue'
+import { startCapture, stopCapture, getPhotos, clearPhotos, setCurrentTemp } from '../services/photoService'
 
 const props = defineProps({ historyItem: Object, cameraId: { type: Number, default: 1 } })
 const emit = defineEmits(['open-history', 'show-history-with-data'])
 
 const chartCanvas = ref(null), photoUrl = ref(null), rawData = ref([]), filterType = ref('all'),
-  capturedPhotos = ref([]), photoDialogVisible = ref(false), selectedPhoto = ref(null),
+  photoDialogVisible = ref(false), selectedPhoto = ref(null),
       startHour = ref(0), startMinute = ref(0), endHour = ref(23), endMinute = ref(59)
-let chartInstance, intervalId, captureTimeoutId, photoErrorShown = false
+let chartInstance, intervalId, photoErrorShown = false
 
 const openPhotoDialog = (photo) => { selectedPhoto.value = photo; photoDialogVisible.value = true }
 const historyPhotos = computed(() => {
@@ -139,9 +140,10 @@ const historyPhotos = computed(() => {
     })
   }
 
-  // Live modunda captured photos
-  if (!props.historyItem && capturedPhotos.value.length) {
-    photos = capturedPhotos.value.filter(photo => {
+  // Live modunda captured photos (now from service)
+  if (!props.historyItem) {
+    const servicePhotos = getPhotos(props.cameraId)
+    photos = servicePhotos.filter(photo => {
       const photoDate = new Date(photo.timestamp)
       const photoHour = photoDate.getHours()
       const photoMinute = photoDate.getMinutes()
@@ -168,6 +170,9 @@ const captureStatus = computed(() => {
 const manageAutoCapture = async () => {
   if (props.historyItem) return
   const temp = currentTemp.value
+  
+  // Update temperature in the service for capture rate management
+  setCurrentTemp(props.cameraId, temp)
 
   if (temp >= 28) {
     if (!photoUrl.value?.includes('/stream')) {
@@ -180,15 +185,10 @@ const manageAutoCapture = async () => {
         }
       } catch (e) { console.error("Kamera IP'si alınamadı:", e) }
     }
-    clearTimeout(captureTimeoutId)
-    captureTimeoutId = setTimeout(manageAutoCapture, 3000)
     return
   }
 
   if (photoUrl.value?.includes('/stream')) photoUrl.value = null
-  await getLatestPhoto()
-  clearTimeout(captureTimeoutId)
-  captureTimeoutId = setTimeout(manageAutoCapture, 5000)
 }
 
 const handleFilter = (cmd) => { filterType.value = cmd; renderChart() }
@@ -256,14 +256,8 @@ const fetchData = async () => {
 }
 
 const getLatestPhoto = async () => {
-  try {
-    const { data } = await axios.get('http://localhost:5001/api/photos', { params: { camera_id: props.cameraId }, withCredentials: true })
-    if (data[0]?.url && photoUrl.value !== data[0].url) {
-      photoUrl.value = data[0].url
-      capturedPhotos.value.push({ url: data[0].url, timestamp: new Date().toISOString() })
-    }
-    photoErrorShown = false
-  } catch (e) { if (!photoErrorShown) { console.warn('⚠ Camera device not available'); photoErrorShown = true } }
+  // Photo capture is now handled by the background service
+  // This method is kept for compatibility but does nothing
 }
 
 const saveData = async () => {
@@ -271,7 +265,7 @@ const saveData = async () => {
   try {
     const response = await axios.post('http://localhost:5001/api/save-history', {
       camera_id: props.cameraId, chartImage: chartInstance.toBase64Image(),
-      photoUrl: photoUrl.value, sensorData: rawData.value, photos: capturedPhotos.value
+      photoUrl: photoUrl.value, sensorData: rawData.value, photos: getPhotos(props.cameraId)
     }, { withCredentials: true })
     ElMessage.success('Saved!')
     // After save, show the history with the saved data
@@ -298,13 +292,13 @@ const clearAll = async () => {
   try {
     await ElMessageBox.confirm('Clear all data?', 'Warning', { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
     await axios.delete('http://localhost:5001/api/data', { params: { camera_id: props.cameraId }, withCredentials: true })
-    photoUrl.value = null; rawData.value = []; capturedPhotos.value = []; renderChart()
+    photoUrl.value = null; rawData.value = []; clearPhotos(props.cameraId); renderChart()
     ElMessage.success('Cleared')
   } catch { }
 }
 
 watch(() => props.historyItem, (item) => {
-  clearInterval(intervalId); clearTimeout(captureTimeoutId)
+  clearInterval(intervalId)
   startHour.value = 0; startMinute.value = 0; endHour.value = 23; endMinute.value = 59
   if (item?.sensor_data) {
     rawData.value = Array.isArray(item.sensor_data) ? item.sensor_data : []
@@ -330,10 +324,18 @@ onMounted(() => {
     }, options: { responsive: true, maintainAspectRatio: false }
   })
   if (props.historyItem) return
+  
+  // Start background capture for this camera
+  startCapture(props.cameraId)
+  
   fetchData(); intervalId = setInterval(fetchData, 3000); manageAutoCapture()
 })
 
-onUnmounted(() => { clearInterval(intervalId); clearTimeout(captureTimeoutId); chartInstance?.destroy() })
+onUnmounted(() => { 
+  clearInterval(intervalId)
+  chartInstance?.destroy() 
+  // Note: Don't stop capture here - let it continue in background
+})
 </script>
 
 <style scoped>
