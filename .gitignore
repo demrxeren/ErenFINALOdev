@@ -12,6 +12,7 @@ __pycache__/
 Frontend/dist/
 
 # Backend instance data
+Backend/instance/data.db
 Backend/instance/uploads/
 Backend/instance/datadb/
 Backend/instance/**/*.db
