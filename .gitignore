@@ -1,0 +1,29 @@
+# Ignore build outputs and environment
+node_modules/
+.dist/
+.env*
+
+# Python venv
+.venv/
+__pycache__/
+*.pyc
+
+# Frontend build
+Frontend/dist/
+
+# Backend instance data
+Backend/instance/uploads/
+Backend/instance/datadb/
+Backend/instance/**/*.db
+Backend/instance/**/*.sqlite
+Backend/instance/**/*.sqlite3
+
+# General uploads and data dirs (if present)
+uploads/
+datadb/
+*.db
+*.sqlite
+*.sqlite3
+
+# VS Code
+.vscode/

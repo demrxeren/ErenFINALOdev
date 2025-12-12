@@ -10,8 +10,8 @@
           <div class="history-images">
             <div class="img-box"><span>Chart</span><el-image :src="`http://localhost:5001${item.chart_image}`"
                 fit="cover" class="history-img" /></div>
-            <div class="img-box" v-if="item.photo_image"><span>Photo</span><el-image :src="item.photo_image" fit="cover"
-                class="history-img" /></div>
+            <div class="img-box" v-if="item.photo_image"><span>Photo</span><el-image :src="resolvePhoto(item.photo_image)" fit="cover"
+              class="history-img" /></div>
           </div>
         </el-card>
       </el-timeline-item>
@@ -29,6 +29,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 const props = defineProps({ visible: Boolean, cameraId: Number })
 defineEmits(['update:visible', 'select-item'])
 const historyItems = ref([])
+const serverBase = 'http://localhost:5001'
+
+const resolvePhoto = (url) => {
+  if (!url) return ''
+  // If backend returned a relative path, prefix with server base
+  if (url.startsWith('/')) return `${serverBase}${url}`
+  return url
+}
 
 const fetchHistory = async () => {
   try { 
