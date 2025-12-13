@@ -46,11 +46,42 @@
         </div>
       </el-main>
     </el-container>
+
+    <!-- Edit Camera Dialog -->
+    <el-dialog 
+      v-model="editDialogVisible" 
+      title="Edit Camera"
+      width="400px"
+      @close="resetEditForm"
+    >
+      <el-form :model="editForm" label-width="120px" label-position="left">
+        <el-form-item label="Camera Name">
+          <el-input 
+            v-model="editForm.name" 
+            placeholder="Enter camera name"
+            clearable
+            class="fixed-input"
+          />
+        </el-form-item>
+        <el-form-item label="Location">
+          <el-input 
+            v-model="editForm.location" 
+            placeholder="Enter location"
+            clearable
+            class="fixed-input"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">Cancel</el-button>
+        <el-button type="primary" @click="saveCamera">Save</el-button>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -58,6 +89,8 @@ import { Edit, Delete } from '@element-plus/icons-vue'
 import AppSidebar from '../components/AppSidebar.vue'
 
 const router = useRouter(), user = ref(null), cameras = ref([])
+const editDialogVisible = ref(false)
+const editForm = reactive({ id: null, name: '', location: '' })
 
 const fetchCameras = async () => {
   try {
@@ -66,7 +99,36 @@ const fetchCameras = async () => {
   } catch { ElMessage.error('Failed to load cameras') }
 }
 
-const editCamera = () => ElMessage.info('Edit functionality not available')
+const editCamera = (camera) => {
+  editForm.id = camera.id
+  editForm.name = camera.name
+  editForm.location = camera.location
+  editDialogVisible.value = true
+}
+
+const saveCamera = async () => {
+  if (!editForm.name.trim()) {
+    ElMessage.warning('Camera name cannot be empty')
+    return
+  }
+  try {
+    await axios.put(`http://localhost:5001/api/cameras/${editForm.id}`, {
+      name: editForm.name,
+      location: editForm.location
+    }, { withCredentials: true })
+    ElMessage.success('Camera updated successfully')
+    editDialogVisible.value = false
+    fetchCameras()
+  } catch {
+    ElMessage.error('Failed to update camera')
+  }
+}
+
+const resetEditForm = () => {
+  editForm.id = null
+  editForm.name = ''
+  editForm.location = ''
+}
 
 const deleteCamera = async (id, name) => {
   try {
@@ -147,4 +209,20 @@ onMounted(async () => {
   margin: 8px 0;
   color: #606266;
 }
+
+/* Edit Dialog Styles */
+:deep(.el-form-item__label) {
+  text-align: left !important;
+  padding-right: 0 !important;
+}
+
+.fixed-input {
+  width: 250px;
+}
+
+:deep(.el-form-item__content) {
+  width: 250px;
+}
+
+
 </style>
