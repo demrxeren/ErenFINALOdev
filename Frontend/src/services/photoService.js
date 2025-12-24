@@ -7,6 +7,12 @@ const intervals = {}
 const timeouts = {}
 let photoErrorShown = false
 
+const getLocalTimestamp = () => {
+  const d = new Date()
+  const pad = (n) => n.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 export const initPhotoCapture = (cameraId) => {
   if (!photosByCamera.value[cameraId]) {
     photosByCamera.value[cameraId] = []
@@ -15,6 +21,10 @@ export const initPhotoCapture = (cameraId) => {
 }
 
 export const getPhotos = (cameraId) => photosByCamera.value[cameraId] || []
+export const getCaptureState = (cameraId) => {
+  initPhotoCapture(cameraId)
+  return captureStateByCamera.value[cameraId]
+}
 
 export const clearPhotos = (cameraId) => {
   if (photosByCamera.value[cameraId]) {
@@ -22,7 +32,7 @@ export const clearPhotos = (cameraId) => {
   }
 }
 
-const getCurrentTemp = (cameraId) => captureStateByCamera.value[cameraId]?.currentTemp || 22
+const getCurrentTemp = (cameraId) => captureStateByCamera.value[cameraId]?.currentTemp ?? 0
 
 const getLatestPhoto = async (cameraId) => {
   try {
@@ -33,11 +43,14 @@ const getLatestPhoto = async (cameraId) => {
     if (data[0]?.url) {
       const ps = captureStateByCamera.value[cameraId]
       if (ps.url !== data[0].url) {
-        ps.url = data[0].url
-        ps.lastTimestamp = new Date().toISOString()
+        captureStateByCamera.value[cameraId] = {
+          ...ps,
+          url: data[0].url,
+          lastTimestamp: getLocalTimestamp()
+        }
         photosByCamera.value[cameraId].push({
           url: data[0].url,
-          timestamp: ps.lastTimestamp
+          timestamp: captureStateByCamera.value[cameraId].lastTimestamp
         })
       }
     }
@@ -60,7 +73,10 @@ const setupStreamIfNeeded = async (cameraId) => {
       const bUrl = cam.ip_address.startsWith('http') ? cam.ip_address : `http://${cam.ip_address}`
       const sUrl = `${bUrl}/stream`
       if (captureStateByCamera.value[cameraId]?.url !== sUrl) {
-        captureStateByCamera.value[cameraId].url = sUrl
+        captureStateByCamera.value[cameraId] = {
+          ...captureStateByCamera.value[cameraId],
+          url: sUrl
+        }
       }
     }
   } catch (e) {
@@ -70,7 +86,7 @@ const setupStreamIfNeeded = async (cameraId) => {
 
 const manageAutoCapture = async (cameraId) => {
   const temp = getCurrentTemp(cameraId)
-  if (temp >= 28) {
+  if (temp >= 22) {
     await setupStreamIfNeeded(cameraId)
     if (timeouts[cameraId]) clearTimeout(timeouts[cameraId])
     timeouts[cameraId] = setTimeout(() => manageAutoCapture(cameraId), 3000)
@@ -78,9 +94,11 @@ const manageAutoCapture = async (cameraId) => {
   }
   await getLatestPhoto(cameraId)
   if (timeouts[cameraId]) clearTimeout(timeouts[cameraId])
-  let iv = 30000
-  if (temp >= 24) iv = 10000
-  if (temp >= 20) iv = 20000
+  let iv = 40000
+  if (temp >= 20) iv = 10000
+  else if (temp >= 18) iv = 20000
+  else if (temp >= 16) iv = 30000
+
   timeouts[cameraId] = setTimeout(() => manageAutoCapture(cameraId), iv)
 }
 
@@ -104,9 +122,19 @@ export const stopCapture = (cameraId) => {
 
 export const setCurrentTemp = (cameraId, temp) => {
   if (!captureStateByCamera.value[cameraId]) {
-    captureStateByCamera.value[cameraId] = {}
+    captureStateByCamera.value[cameraId] = { currentTemp: temp }
+  } else {
+    const oldTemp = captureStateByCamera.value[cameraId].currentTemp
+    captureStateByCamera.value[cameraId].currentTemp = temp
+
+    // If we just crossed the threshold, trigger immediate update
+    if ((oldTemp < 22 && temp >= 22) || (oldTemp >= 22 && temp < 22)) {
+      if (timeouts[cameraId]) {
+        clearTimeout(timeouts[cameraId])
+        manageAutoCapture(cameraId)
+      }
+    }
   }
-  captureStateByCamera.value[cameraId].currentTemp = temp
 }
 
 export const stopAllCaptures = () => {
