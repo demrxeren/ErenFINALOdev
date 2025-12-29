@@ -11,33 +11,17 @@
         <el-alert v-if="!historyItem" :title="captureStatus.title" :type="captureStatus.type"
           :description="captureStatus.desc" show-icon :closable="false" style="margin-bottom: 10px;" />
 
-        <div class="hour-range-filter">
-          <div class="hour-inputs">
+        <div class="date-time-filter">
+          <div class="date-time-inputs">
             <div class="time-group">
-              <label>Start Time:</label>
-              <div class="time-inputs">
-                <div class="input-wrapper">
-                  <span class="time-label">Hour:</span>
-                  <el-input-number v-model="startHour" :min="0" :max="23" size="small" @change="renderChart" />
-                </div>
-                <div class="input-wrapper">
-                  <span class="time-label">Minute:</span>
-                  <el-input-number v-model="startMinute" :min="0" :max="59" size="small" @change="renderChart" />
-                </div>
-              </div>
+              <label>Start Date & Time:</label>
+              <el-date-picker v-model="startDateTime" type="datetime" placeholder="Select start date & time"
+                size="small" format="DD/MM/YYYY HH:mm" value-format="YYYY-MM-DD HH:mm:ss" @change="renderChart" />
             </div>
             <div class="time-group">
-              <label>End Time:</label>
-              <div class="time-inputs">
-                <div class="input-wrapper">
-                  <span class="time-label">Hour:</span>
-                  <el-input-number v-model="endHour" :min="0" :max="23" size="small" @change="renderChart" />
-                </div>
-                <div class="input-wrapper">
-                  <span class="time-label">Minute:</span>
-                  <el-input-number v-model="endMinute" :min="0" :max="59" size="small" @change="renderChart" />
-                </div>
-              </div>
+              <label>End Date & Time:</label>
+              <el-date-picker v-model="endDateTime" type="datetime" placeholder="Select end date & time" size="small"
+                format="DD/MM/YYYY HH:mm" value-format="YYYY-MM-DD HH:mm:ss" @change="renderChart" />
             </div>
           </div>
         </div>
@@ -125,8 +109,21 @@ const props = defineProps({ historyItem: Object, cameraId: { type: Number, defau
 const emit = defineEmits(['open-history', 'show-history-with-data'])
 
 const chartCanvas = ref(null), rawData = ref([]), filterType = ref('all'),
-  photoDialogVisible = ref(false), selectedPhoto = ref(null),
-  startHour = ref(0), startMinute = ref(0), endHour = ref(23), endMinute = ref(59)
+  photoDialogVisible = ref(false), selectedPhoto = ref(null)
+
+// Initialize date range to today (start of day to end of day)
+const getDefaultStartDate = () => {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+const getDefaultEndDate = () => {
+  const d = new Date()
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+const startDateTime = ref(getDefaultStartDate())
+const endDateTime = ref(getDefaultEndDate())
 let chartInstance, intervalId, photoErrorShown = false
 
 const photoUrl = computed(() => getCaptureState(props.cameraId)?.url)
@@ -143,22 +140,17 @@ const openPhotoDialog = (photo) => { selectedPhoto.value = photo; photoDialogVis
 const historyPhotos = computed(() => {
   let photos = []
 
-  // Başlangıç ve bitiş zamanlarını dakika bazında hesapla
-  const startTime = startHour.value * 60 + startMinute.value
-  // Düzeltme: Bitiş dakikasını (ve içindeki tüm saniyeleri) hariç tutmak için +1 kaldırıldı.
-  const endTime = endHour.value * 60 + endMinute.value
+  // Get start and end as Date objects
+  const start = startDateTime.value ? new Date(startDateTime.value) : null
+  const end = endDateTime.value ? new Date(endDateTime.value) : null
 
   // History modunda history item'daki photos
   if (props.historyItem?.photos?.length) {
     photos = props.historyItem.photos.filter(photo => {
       const photoDate = new Date(photo.timestamp)
-      const photoMonth = photoDate.getMonth()
-      const photoHour = photoDate.getHours()
-      const photoMinute = photoDate.getMinutes()
-      const photoTime = photoMonth + photoHour * 60 + photoMinute
-
-      // endTime'a eşit olan dakika (örneğin 23:55) hariç tutulur.
-      return photoTime >= startTime && photoTime < endTime
+      if (start && photoDate < start) return false
+      if (end && photoDate > end) return false
+      return true
     })
   }
 
@@ -167,12 +159,9 @@ const historyPhotos = computed(() => {
     const servicePhotos = getPhotos(props.cameraId)
     photos = servicePhotos.filter(photo => {
       const photoDate = new Date(photo.timestamp)
-      const photoHour = photoDate.getHours()
-      const photoMinute = photoDate.getMinutes()
-      const photoTime = photoHour * 60 + photoMinute
-
-      // endTime'a eşit olan dakika (örneğin 23:55) hariç tutulur.
-      return photoTime >= startTime && photoTime < endTime
+      if (start && photoDate < start) return false
+      if (end && photoDate > end) return false
+      return true
     })
   }
 
@@ -206,20 +195,16 @@ const renderChart = () => {
   let show = []
   let data = [...rawData.value]
 
-  // Başlangıç ve bitiş zamanlarını dakika bazında hesapla
-  const startTime = startHour.value * 60 + startMinute.value
-  // Düzeltme: Bitiş dakikasını (ve içindeki tüm saniyeleri) hariç tutmak için +1 kaldırıldı.
-  const endTime = endHour.value * 60 + endMinute.value
+  // Get start and end as Date objects
+  const start = startDateTime.value ? new Date(startDateTime.value) : null
+  const end = endDateTime.value ? new Date(endDateTime.value) : null
 
-  // Apply hour range filter in both modes
+  // Apply date-time range filter
   data = data.filter(d => {
     const dataDate = new Date(d.timestamp)
-    const dataHour = dataDate.getHours()
-    const dataMinute = dataDate.getMinutes()
-    const dataTime = dataHour * 60 + dataMinute
-
-    // endTime'a eşit olan dakika (örneğin 23:55) hariç tutulur.
-    return dataTime >= startTime && dataTime < endTime
+    if (start && dataDate < start) return false
+    if (end && dataDate > end) return false
+    return true
   })
 
   if (filterType.value === 'show-20') {
@@ -300,7 +285,9 @@ const clearAll = async () => {
 
 watch(() => props.historyItem, (item) => {
   clearInterval(intervalId)
-  startHour.value = 0; startMinute.value = 0; endHour.value = 23; endMinute.value = 59
+  // Reset date range to today
+  startDateTime.value = getDefaultStartDate()
+  endDateTime.value = getDefaultEndDate()
   if (item?.sensor_data) {
     rawData.value = Array.isArray(item.sensor_data) ? item.sensor_data : []
     filterType.value = 'all'; renderChart()
@@ -310,8 +297,8 @@ watch(() => props.historyItem, (item) => {
   }
 })
 
-watch([() => startHour.value, () => startMinute.value, () => endHour.value, () => endMinute.value], () => {
-  // Her iki modda da chart'ı ve fotoğrafları güncelle
+watch([() => startDateTime.value, () => endDateTime.value], () => {
+  // Update chart and photos when date range changes
   renderChart()
 })
 
@@ -389,14 +376,14 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.hour-range-filter {
+.date-time-filter {
   background: white;
   padding: 12px;
   border-radius: 4px;
   border: 1px solid #dcdfe6;
 }
 
-.hour-inputs {
+.date-time-inputs {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -414,26 +401,12 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-.time-inputs {
-  display: flex;
-  gap: 6px;
-  width: 100%;
+.date-time-filter :deep(.el-date-editor) {
+  width: 100% !important;
 }
 
-.input-wrapper {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.time-label {
-  font-size: 11px;
-  color: #909399;
-}
-
-.input-wrapper :deep(.el-input-number) {
-  width: 100%;
+.date-time-filter :deep(.el-input__wrapper) {
+  padding: 4px 8px;
 }
 
 .history-info {
