@@ -307,11 +307,11 @@ def background_photo_capture():
                         t = ls.temperature
                         print(f"🌡️  Camera {c.id}: Temperature = {t}°C")
                         
-                        if t >= 22:
-                            print(f"📡 Camera {c.id}: Temperature {t}°C >= 22. Stream mode - skipping background capture.")
+                        if t >= 26:
+                            print(f"📡 Camera {c.id}: Temperature {t}°C >= 26. Stream mode - skipping background capture.")
                             continue
                             
-                        iv = 10 if t >= 20 else (20 if t >= 18 else (30 if t >= 16 else 40))
+                        iv = 10 if t >= 24 else (20 if t >= 22 else (30 if t >= 20 else 40))
                         now = datetime.datetime.now()
                         if c.id in photo_cache:
                             _, ct = photo_cache[c.id]

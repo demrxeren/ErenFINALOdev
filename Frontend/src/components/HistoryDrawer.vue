@@ -2,16 +2,16 @@
   <el-drawer :model-value="visible" @update:model-value="$emit('update:visible', $event)" title="Recent History"
     size="300px" @open="fetchHistory">
     <el-timeline v-if="items.length">
-      <el-timeline-item v-for="item in items" :key="item.id" :timestamp="item.timestamp" placement="top">
+      <el-timeline-item v-for="item in items" :key="item.id" :timestamp="formatDate(item.timestamp)" placement="top">
         <el-card shadow="hover" :body-style="{ padding: '10px', position: 'relative' }"
           @click="$emit('select-item', item)">
           <el-button type="danger" :icon="Delete" circle size="small" class="delete-btn"
             @click.stop="deleteHistory(item.id)" />
           <div class="history-images">
-            <div class="img-box"><span>Chart</span><el-image :src="`${SB}${item.chart_image}`"
-                fit="cover" class="history-img" /></div>
-            <div class="img-box" v-if="item.photo_image"><span>Photo</span><el-image :src="resolvePhoto(item.photo_image)" fit="cover"
-              class="history-img" /></div>
+            <div class="img-box"><span>Chart</span><el-image :src="`${SB}${item.chart_image}`" fit="cover"
+                class="history-img" /></div>
+            <div class="img-box" v-if="item.photo_image"><span>Photo</span><el-image
+                :src="resolvePhoto(item.photo_image)" fit="cover" class="history-img" /></div>
           </div>
         </el-card>
       </el-timeline-item>
@@ -33,17 +33,26 @@ const SB = 'http://localhost:5001'
 
 const resolvePhoto = (url) => url ? (url.startsWith('/') ? `${SB}${url}` : url) : ''
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  const pad = (n) => n.toString().padStart(2, '0')
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 const fetchHistory = async () => {
-  try { 
+  try {
     const { data } = await axios.get(`${SB}/api/history`, {
-      params: props.cameraId ? { camera_id: props.cameraId } : {}, withCredentials: true })
+      params: props.cameraId ? { camera_id: props.cameraId } : {}, withCredentials: true
+    })
     items.value = data
   } catch { }
 }
 
 const deleteHistory = async (id) => {
   try {
-    await ElMessageBox.confirm('Delete?', 'Warning', 
+    await ElMessageBox.confirm('Delete?', 'Warning',
       { confirmButtonText: 'Yes', cancelButtonText: 'No', type: 'warning' })
     await axios.delete(`${SB}/api/history/${id}`, { withCredentials: true })
     ElMessage.success('Deleted'); fetchHistory()

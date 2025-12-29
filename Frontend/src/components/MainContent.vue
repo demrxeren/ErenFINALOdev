@@ -67,7 +67,7 @@
         </template>
         <template v-else>
           <div class="history-info">
-            <p>{{ historyItem.timestamp }}</p>
+            <p>{{ formatDate(historyItem.timestamp) }}</p>
           </div>
         </template>
       </div>
@@ -87,7 +87,7 @@
         <div v-else-if="historyPhotos.length > 0" class="history-grid">
           <div v-for="(photo, index) in historyPhotos" :key="index" class="grid-item" @click="openPhotoDialog(photo)">
             <img :src="photo.url" :alt="`Photo ${index + 1}`" />
-            <div class="photo-timestamp">{{ new Date(photo.timestamp).toLocaleTimeString() }}</div>
+            <div class="photo-timestamp">{{ formatDate(photo.timestamp) }}</div>
           </div>
         </div>
 
@@ -105,7 +105,7 @@
         <img v-if="selectedPhoto" :src="selectedPhoto.url"
           style="max-width: 100%; max-height: 70vh; width: auto; height: auto; display: block; margin: 0 auto;" />
         <template #header>
-          <span>{{ selectedPhoto ? new Date(selectedPhoto.timestamp).toLocaleString() : '' }}</span>
+          <span>{{ selectedPhoto ? formatDate(selectedPhoto.timestamp) : '' }}</span>
         </template>
       </el-dialog>
 
@@ -131,6 +131,14 @@ let chartInstance, intervalId, photoErrorShown = false
 
 const photoUrl = computed(() => getCaptureState(props.cameraId)?.url)
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  const pad = (n) => n.toString().padStart(2, '0')
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 const openPhotoDialog = (photo) => { selectedPhoto.value = photo; photoDialogVisible.value = true }
 const historyPhotos = computed(() => {
   let photos = []
@@ -144,9 +152,10 @@ const historyPhotos = computed(() => {
   if (props.historyItem?.photos?.length) {
     photos = props.historyItem.photos.filter(photo => {
       const photoDate = new Date(photo.timestamp)
+      const photoMonth = photoDate.getMonth()
       const photoHour = photoDate.getHours()
       const photoMinute = photoDate.getMinutes()
-      const photoTime = photoHour * 60 + photoMinute
+      const photoTime = photoMonth + photoHour * 60 + photoMinute
 
       // endTime'a eşit olan dakika (örneğin 23:55) hariç tutulur.
       return photoTime >= startTime && photoTime < endTime
@@ -174,9 +183,9 @@ const filterLabel = computed(() => ({ 'temp-max': 'Highest Temp', 'temp-min': 'L
 const currentTemp = computed(() => rawData.value.length ? rawData.value[rawData.value.length - 1].temperature : 0)
 const captureStatus = computed(() => {
   const t = currentTemp.value
-  return t >= 22 ? { title: 'ALARM', type: 'error', desc: 'Live Video Stream Active' } :
-    t >= 20 ? { title: 'Attention', type: 'warning', desc: 'Capture: Every 10s' } :
-      t >= 18 ? { title: 'Normal', type: 'info', desc: 'Capture: Every 20s' } :
+  return t >= 26 ? { title: 'ALARM', type: 'error', desc: 'Live Video Stream Active' } :
+    t >= 24 ? { title: 'Attention', type: 'warning', desc: 'Capture: Every 10s' } :
+      t >= 22 ? { title: 'Normal', type: 'info', desc: 'Capture: Every 20s' } :
         { title: 'Cool', type: 'success', desc: 'Capture: Every 30s' }
 })
 
@@ -224,7 +233,7 @@ const renderChart = () => {
     show = data.slice(Math.max(0, idx - 2), Math.min(data.length, idx + 3))
   } else show = data
 
-  chartInstance.data.labels = show.map(d => new Date(d.timestamp).toLocaleTimeString())
+  chartInstance.data.labels = show.map(d => formatDate(d.timestamp))
   chartInstance.data.datasets[0].data = show.map(d => d.temperature)
   chartInstance.data.datasets[1].data = show.map(d => d.humidity)
   chartInstance.update()

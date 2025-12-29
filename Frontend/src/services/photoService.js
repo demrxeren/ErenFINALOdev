@@ -86,7 +86,7 @@ const setupStreamIfNeeded = async (cameraId) => {
 
 const manageAutoCapture = async (cameraId) => {
   const temp = getCurrentTemp(cameraId)
-  if (temp >= 22) {
+  if (temp >= 26) {
     await setupStreamIfNeeded(cameraId)
     if (timeouts[cameraId]) clearTimeout(timeouts[cameraId])
     timeouts[cameraId] = setTimeout(() => manageAutoCapture(cameraId), 3000)
@@ -95,9 +95,9 @@ const manageAutoCapture = async (cameraId) => {
   await getLatestPhoto(cameraId)
   if (timeouts[cameraId]) clearTimeout(timeouts[cameraId])
   let iv = 40000
-  if (temp >= 20) iv = 10000
-  else if (temp >= 18) iv = 20000
-  else if (temp >= 16) iv = 30000
+  if (temp >= 24) iv = 10000
+  else if (temp >= 22) iv = 20000
+  else if (temp >= 20) iv = 30000
 
   timeouts[cameraId] = setTimeout(() => manageAutoCapture(cameraId), iv)
 }
@@ -128,7 +128,7 @@ export const setCurrentTemp = (cameraId, temp) => {
     captureStateByCamera.value[cameraId].currentTemp = temp
 
     // If we just crossed the threshold, trigger immediate update
-    if ((oldTemp < 22 && temp >= 22) || (oldTemp >= 22 && temp < 22)) {
+    if ((oldTemp < 26 && temp >= 26) || (oldTemp >= 26 && temp < 26)) {
       if (timeouts[cameraId]) {
         clearTimeout(timeouts[cameraId])
         manageAutoCapture(cameraId)
